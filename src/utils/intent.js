@@ -306,6 +306,23 @@ function isCompanyOnlyMessage(text) {
   return companyWords.includes(value);
 }
 
+  /* =========================================================
+  COMPARE ONLY MESSAGE
+========================================================= */
+
+
+  function isComparisonRequest(text) {
+  const value = normalize(text);
+
+  return (
+    value.includes(" vs ") ||
+    value.includes(" versus ") ||
+    value.includes("compare ") ||
+    value.includes("comparison") ||
+    value.includes("difference between")
+  );
+}
+
 /* =========================================================
 HELP / START
 ========================================================= */
@@ -340,5 +357,6 @@ module.exports = {
   isSecRequest,
 
   isCompanyOnlyMessage,
-  isHelpRequest
+  isHelpRequest,
+  isComparisonRequest
 };
