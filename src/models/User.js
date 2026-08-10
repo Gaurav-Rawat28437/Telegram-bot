@@ -49,13 +49,14 @@ const userSchema = new mongoose.Schema(
       default: []
     },
 
-    // Remembers what the user wants
-    // for short follow-up messages such as:
-    // "tesla"
-    // after "its live finance"
     pendingIntent: {
       type: String,
-      default: ""
+      default: null
+    },
+
+    pendingCompany: {
+      type: String,
+      default: null
     }
   },
   {
@@ -63,7 +64,4 @@ const userSchema = new mongoose.Schema(
   }
 );
 
-module.exports = mongoose.model(
-  "User",
-  userSchema
-);
+module.exports = mongoose.model("User", userSchema);

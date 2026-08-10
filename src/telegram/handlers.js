@@ -43,26 +43,26 @@ const {
   isLivePriceRequest,
   isNewsRequest,
   isEarningsRequest,
-  isSecRequest
+  isSecRequest,
+  isCompanyOnlyMessage
 } = require("../utils/intent");
 
 
-/*
-|--------------------------------------------------------------------------
-| COMPANY EXTRACTION
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   COMPANY EXTRACTION
+========================================================= */
 
 function extractCompanyText(text) {
   return String(text || "")
     .replace(
-      /\b(add|remove|delete|unwatch|watchlist|watch\s+list|to my watchlist|from my watchlist|please)\b/gi,
+      /\b(add|track|watch|remove|delete|unwatch|watchlist|watch\s+list|to my watchlist|from my watchlist|please)\b/gi,
       " "
     )
     .replace(
       /\b(company|stock|stocks|shares|price|prices|live|finance|financial|update|updates)\b/gi,
       " "
     )
+    .replace(/\s+/g, " ")
     .trim();
 }
 
@@ -82,11 +82,9 @@ function getCompanyFromMessage(text) {
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| CONVERSATION
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   CONVERSATION
+========================================================= */
 
 async function saveConversation(
   telegramId,
@@ -117,11 +115,9 @@ async function saveConversation(
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| ADD WATCHLIST
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   ADD WATCHLIST
+========================================================= */
 
 async function addToWatchlist(
   user,
@@ -163,11 +159,9 @@ async function addToWatchlist(
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| REMOVE WATCHLIST
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   REMOVE WATCHLIST
+========================================================= */
 
 async function removeFromWatchlist(
   user,
@@ -209,11 +203,9 @@ async function removeFromWatchlist(
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| SHOW WATCHLIST
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   SHOW WATCHLIST
+========================================================= */
 
 function watchlistMessage(user) {
   const list =
@@ -257,22 +249,9 @@ function watchlistMessage(user) {
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| WATCHLIST LIVE FINANCE
-|--------------------------------------------------------------------------
-|
-| This handles:
-|
-| my watchlist live finance
-| live finance for my watchlist
-| watchlist live prices
-| live prices of my watchlist
-| show live finance for my watchlist
-| live update for companies I'm watching
-|
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   WATCHLIST LIVE FINANCE
+========================================================= */
 
 async function handleWatchlistLiveFinance(
   ctx,
@@ -298,18 +277,6 @@ async function handleWatchlistLiveFinance(
     return answer;
   }
 
-  const lines = [
-    "📊 Live Finance — Your Watchlist",
-    "",
-    "Fetching current market data..."
-  ];
-
-  /*
-   * Fetch all companies independently.
-   * One failed company should not stop
-   * the entire watchlist response.
-   */
-
   const results =
     await Promise.all(
       list.map(
@@ -322,24 +289,20 @@ async function handleWatchlistLiveFinance(
 
             const resolvedCompany =
               company || {
-                name:
-                  item.name,
-                symbol:
-                  item.symbol,
-                finnhubSymbol:
-                  item.symbol
+                name: item.name,
+                symbol: item.symbol,
+                finnhubSymbol: item.symbol
               };
 
             const quote =
               await getQuote(
                 resolvedCompany.finnhubSymbol ||
-                  resolvedCompany.symbol
+                resolvedCompany.symbol
               );
 
             return {
               success: true,
-              company:
-                resolvedCompany,
+              company: resolvedCompany,
               quote
             };
           } catch (error) {
@@ -351,30 +314,20 @@ async function handleWatchlistLiveFinance(
             return {
               success: false,
               company: {
-                name:
-                  item.name,
-                symbol:
-                  item.symbol
+                name: item.name,
+                symbol: item.symbol
               },
-              error:
-                error.message
+              error: error.message
             };
           }
         }
       )
     );
 
-  /*
-   * Remove temporary loading message
-   * by simply sending the final response.
-   */
-
-  lines.length = 0;
-
-  lines.push(
+  const lines = [
     "📊 Live Finance — Your Watchlist",
     ""
-  );
+  ];
 
   let successCount = 0;
 
@@ -400,39 +353,25 @@ async function handleWatchlistLiveFinance(
       result.quote || {};
 
     const price =
-      Number(
-        quote.c || 0
-      );
+      Number(quote.c || 0);
 
     const change =
-      Number(
-        quote.d || 0
-      );
+      Number(quote.d || 0);
 
     const changePercent =
-      Number(
-        quote.dp || 0
-      );
+      Number(quote.dp || 0);
 
     const high =
-      Number(
-        quote.h || 0
-      );
+      Number(quote.h || 0);
 
     const low =
-      Number(
-        quote.l || 0
-      );
+      Number(quote.l || 0);
 
     const open =
-      Number(
-        quote.o || 0
-      );
+      Number(quote.o || 0);
 
     const previousClose =
-      Number(
-        quote.pc || 0
-      );
+      Number(quote.pc || 0);
 
     const icon =
       change >= 0
@@ -457,7 +396,7 @@ async function handleWatchlistLiveFinance(
   }
 
   lines.push(
-    `🕐 Live data fetched just now.`,
+    "🕐 Live data fetched just now.",
     `📊 ${successCount}/${list.length} companies updated.`
   );
 
@@ -470,11 +409,9 @@ async function handleWatchlistLiveFinance(
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| SINGLE COMPANY LIVE FINANCE
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   SINGLE COMPANY LIVE FINANCE
+========================================================= */
 
 async function handleLivePrice(
   ctx,
@@ -512,11 +449,9 @@ async function handleLivePrice(
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| NEWS
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   NEWS
+========================================================= */
 
 async function handleNews(
   ctx,
@@ -596,11 +531,9 @@ async function handleNews(
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| EARNINGS
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   EARNINGS
+========================================================= */
 
 async function handleEarnings(
   ctx,
@@ -671,22 +604,14 @@ async function handleEarnings(
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| SEC
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   SEC
+========================================================= */
 
 async function handleSEC(
   ctx,
   company
 ) {
-  /*
-   * SEC requires a CIK.
-   * If your resolver doesn't have one,
-   * return a clean response instead of crashing.
-   */
-
   if (!company.cik) {
     const answer =
       `⚠️ SEC CIK information isn't configured for ${company.name} yet.`;
@@ -759,11 +684,9 @@ async function handleSEC(
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| NATURAL MESSAGE
-|--------------------------------------------------------------------------
-*/
+/* =========================================================
+   NATURAL MESSAGE
+========================================================= */
 
 async function handleNaturalMessage(
   ctx,
@@ -773,17 +696,161 @@ async function handleNaturalMessage(
   const telegramId =
     String(ctx.from.id);
 
-  /*
-   * Resolve company from the message.
-   */
+
+  /* =======================================================
+     PENDING COMPANY FOLLOW-UP
+
+     Example:
+
+     User: its live finance
+     Bot: Which company?
+     User: tesla
+
+     The second message must NOT go to Gemini.
+  ======================================================= */
+
+  if (
+    user.pendingIntent &&
+    isCompanyOnlyMessage(text)
+  ) {
+    const company =
+      await getCompanyBySymbol(
+        text.toUpperCase()
+      );
+
+    if (!company) {
+      const answer =
+        `⚠️ I couldn't find ${text} as a supported company.`;
+
+      await ctx.reply(answer);
+
+      user.pendingIntent = null;
+      user.pendingCompany = null;
+
+      await user.save();
+
+      await saveConversation(
+        telegramId,
+        text,
+        answer
+      );
+
+      return;
+    }
+
+    const pendingIntent =
+      user.pendingIntent;
+
+    user.pendingIntent = null;
+    user.pendingCompany = null;
+
+    await user.save();
+
+
+    /* LIVE PRICE */
+
+    if (
+      pendingIntent ===
+      "live_price"
+    ) {
+      const answer =
+        await handleLivePrice(
+          ctx,
+          company
+        );
+
+      await saveConversation(
+        telegramId,
+        text,
+        answer,
+        company
+      );
+
+      return;
+    }
+
+
+    /* NEWS */
+
+    if (
+      pendingIntent ===
+      "news"
+    ) {
+      const answer =
+        await handleNews(
+          ctx,
+          company
+        );
+
+      await saveConversation(
+        telegramId,
+        text,
+        answer,
+        company
+      );
+
+      return;
+    }
+
+
+    /* EARNINGS */
+
+    if (
+      pendingIntent ===
+      "earnings"
+    ) {
+      const answer =
+        await handleEarnings(
+          ctx,
+          company
+        );
+
+      await saveConversation(
+        telegramId,
+        text,
+        answer,
+        company
+      );
+
+      return;
+    }
+
+
+    /* SEC */
+
+    if (
+      pendingIntent ===
+      "sec"
+    ) {
+      const answer =
+        await handleSEC(
+          ctx,
+          company
+        );
+
+      await saveConversation(
+        telegramId,
+        text,
+        answer,
+        company
+      );
+
+      return;
+    }
+  }
+
+
+  /* =======================================================
+     NORMAL COMPANY RESOLUTION
+  ======================================================= */
 
   let company =
     getCompanyFromMessage(text);
 
-  /*
-   * If no company was directly mentioned,
-   * try the user's watchlist.
-   */
+
+  /* =======================================================
+     CHECK WATCHLIST FOR COMPANY
+  ======================================================= */
 
   if (
     !company &&
@@ -811,12 +878,9 @@ async function handleNaturalMessage(
           (await getCompanyBySymbol(
             item.symbol
           )) || {
-            name:
-              item.name,
-            symbol:
-              item.symbol,
-            finnhubSymbol:
-              item.symbol
+            name: item.name,
+            symbol: item.symbol,
+            finnhubSymbol: item.symbol
           };
 
         break;
@@ -825,15 +889,9 @@ async function handleNaturalMessage(
   }
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | 1. WATCHLIST LIVE FINANCE
-  |--------------------------------------------------------------------------
-  |
-  | IMPORTANT:
-  | This must come BEFORE isWatchlistRequest().
-  |
-  */
+  /* =======================================================
+     1. WATCHLIST LIVE FINANCE
+  ======================================================= */
 
   if (
     isWatchlistLiveFinanceRequest(
@@ -856,11 +914,9 @@ async function handleNaturalMessage(
   }
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | 2. SHOW WATCHLIST
-  |--------------------------------------------------------------------------
-  */
+  /* =======================================================
+     2. SHOW WATCHLIST
+  ======================================================= */
 
   if (
     isWatchlistRequest(text)
@@ -880,11 +936,9 @@ async function handleNaturalMessage(
   }
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | 3. ADD
-  |--------------------------------------------------------------------------
-  */
+  /* =======================================================
+     3. ADD
+  ======================================================= */
 
   if (
     isAddRequest(text)
@@ -919,11 +973,9 @@ async function handleNaturalMessage(
   }
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | 4. REMOVE
-  |--------------------------------------------------------------------------
-  */
+  /* =======================================================
+     4. REMOVE
+  ======================================================= */
 
   if (
     isRemoveRequest(text)
@@ -958,16 +1010,22 @@ async function handleNaturalMessage(
   }
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | 5. SINGLE COMPANY LIVE PRICE
-  |--------------------------------------------------------------------------
-  */
+  /* =======================================================
+     5. SINGLE COMPANY LIVE PRICE
+  ======================================================= */
 
   if (
     isLivePriceRequest(text)
   ) {
     if (!company) {
+      user.pendingIntent =
+        "live_price";
+
+      user.pendingCompany =
+        null;
+
+      await user.save();
+
       const answer =
         "Which company would you like a live finance update for?";
 
@@ -993,16 +1051,22 @@ async function handleNaturalMessage(
   }
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | 6. NEWS
-  |--------------------------------------------------------------------------
-  */
+  /* =======================================================
+     6. NEWS
+  ======================================================= */
 
   if (
     isNewsRequest(text)
   ) {
     if (!company) {
+      user.pendingIntent =
+        "news";
+
+      user.pendingCompany =
+        null;
+
+      await user.save();
+
       const answer =
         "Which company would you like the latest news for?";
 
@@ -1028,16 +1092,22 @@ async function handleNaturalMessage(
   }
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | 7. EARNINGS
-  |--------------------------------------------------------------------------
-  */
+  /* =======================================================
+     7. EARNINGS
+  ======================================================= */
 
   if (
     isEarningsRequest(text)
   ) {
     if (!company) {
+      user.pendingIntent =
+        "earnings";
+
+      user.pendingCompany =
+        null;
+
+      await user.save();
+
       const answer =
         "Which company's earnings would you like to see?";
 
@@ -1063,16 +1133,22 @@ async function handleNaturalMessage(
   }
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | 8. SEC
-  |--------------------------------------------------------------------------
-  */
+  /* =======================================================
+     8. SEC
+  ======================================================= */
 
   if (
     isSecRequest(text)
   ) {
     if (!company) {
+      user.pendingIntent =
+        "sec";
+
+      user.pendingCompany =
+        null;
+
+      await user.save();
+
       const answer =
         "Which company's SEC filings would you like to see?";
 
@@ -1098,11 +1174,9 @@ async function handleNaturalMessage(
   }
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | 9. AI CONTEXT
-  |--------------------------------------------------------------------------
-  */
+  /* =======================================================
+     9. AI CONTEXT
+  ======================================================= */
 
   let context = "";
 
@@ -1138,11 +1212,9 @@ async function handleNaturalMessage(
   }
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | 10. GEMINI / NORMAL CONVERSATION
-  |--------------------------------------------------------------------------
-  */
+  /* =======================================================
+     10. GEMINI / NORMAL CONVERSATION
+  ======================================================= */
 
   const result =
     await askAI({
@@ -1153,11 +1225,9 @@ async function handleNaturalMessage(
     });
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | AI ERROR
-  |--------------------------------------------------------------------------
-  */
+  /* =======================================================
+     AI ERROR
+  ======================================================= */
 
   if (
     !result.success
@@ -1203,11 +1273,9 @@ async function handleNaturalMessage(
   }
 
 
-  /*
-  |--------------------------------------------------------------------------
-  | AI SUCCESS
-  |--------------------------------------------------------------------------
-  */
+  /* =======================================================
+     AI SUCCESS
+  ======================================================= */
 
   await ctx.reply(
     result.text
@@ -1221,6 +1289,10 @@ async function handleNaturalMessage(
   );
 }
 
+
+/* =========================================================
+   EXPORTS
+========================================================= */
 
 module.exports = {
   handleNaturalMessage,
