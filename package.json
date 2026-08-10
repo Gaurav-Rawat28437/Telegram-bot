@@ -4,9 +4,9 @@
   "description": "AI financial Telegram assistant",
   "main": "src/server.js",
   "scripts": {
-    "dev": "nodemon src/server.js",
-    "start": "node src/server.js",
-    "bot": "node src/telegram/bot.js",
+    "start": "node src/start.js",
+  "dev": "nodemon src/server.js",
+  "bot": "node src/telegram/bot.js",
     "bot:dev": "nodemon src/telegram/bot.js"
   },
   "dependencies": {
