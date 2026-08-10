@@ -1,6 +1,3 @@
-const User =
-  require("../models/User");
-
 const Conversation =
   require("../models/Conversation");
 
@@ -44,9 +41,9 @@ const {
   isNewsRequest,
   isEarningsRequest,
   isSecRequest,
-  isCompanyOnlyMessage
+  isCompanyOnlyMessage,
+  isHelpRequest
 } = require("../utils/intent");
-
 
 /* =========================================================
    COMPANY EXTRACTION
@@ -66,21 +63,21 @@ function extractCompanyText(text) {
     .trim();
 }
 
-
 function getCompanyFromMessage(text) {
-  const direct =
-    resolveCompany(text);
+  const direct = resolveCompany(text);
 
   if (direct) {
     return direct;
   }
 
-  const cleaned =
-    extractCompanyText(text);
+  const cleaned = extractCompanyText(text);
+
+  if (!cleaned) {
+    return null;
+  }
 
   return resolveCompany(cleaned);
 }
-
 
 /* =========================================================
    CONVERSATION
@@ -114,7 +111,6 @@ async function saveConversation(
   }
 }
 
-
 /* =========================================================
    ADD WATCHLIST
 ========================================================= */
@@ -130,10 +126,8 @@ async function addToWatchlist(
   const exists =
     user.watchlist.some(
       (item) =>
-        String(item.symbol)
-          .toUpperCase() ===
-        String(company.symbol)
-          .toUpperCase()
+        String(item.symbol).toUpperCase() ===
+        String(company.symbol).toUpperCase()
     );
 
   if (exists) {
@@ -158,7 +152,6 @@ async function addToWatchlist(
   };
 }
 
-
 /* =========================================================
    REMOVE WATCHLIST
 ========================================================= */
@@ -177,10 +170,8 @@ async function removeFromWatchlist(
   user.watchlist =
     user.watchlist.filter(
       (item) =>
-        String(item.symbol)
-          .toUpperCase() !==
-        String(company.symbol)
-          .toUpperCase()
+        String(item.symbol).toUpperCase() !==
+        String(company.symbol).toUpperCase()
     );
 
   if (
@@ -202,7 +193,6 @@ async function removeFromWatchlist(
   };
 }
 
-
 /* =========================================================
    SHOW WATCHLIST
 ========================================================= */
@@ -219,8 +209,8 @@ function watchlistMessage(user) {
       "",
       "Try:",
       "• Add Tesla to my watchlist",
-      "• Add Apple",
-      "• Add NVIDIA",
+      "• Track Apple",
+      "• Watch NVIDIA",
       "• What companies am I watching?",
       "• My watchlist live finance"
     ].join("\n");
@@ -248,7 +238,6 @@ function watchlistMessage(user) {
   ].join("\n");
 }
 
-
 /* =========================================================
    WATCHLIST LIVE FINANCE
 ========================================================= */
@@ -268,8 +257,8 @@ async function handleWatchlistLiveFinance(
       "",
       "Add a company first:",
       "• Add Tesla to my watchlist",
-      "• Add Apple",
-      "• Add NVIDIA"
+      "• Track Apple",
+      "• Watch NVIDIA"
     ].join("\n");
 
     await ctx.reply(answer);
@@ -297,7 +286,7 @@ async function handleWatchlistLiveFinance(
             const quote =
               await getQuote(
                 resolvedCompany.finnhubSymbol ||
-                resolvedCompany.symbol
+                  resolvedCompany.symbol
               );
 
             return {
@@ -316,8 +305,7 @@ async function handleWatchlistLiveFinance(
               company: {
                 name: item.name,
                 symbol: item.symbol
-              },
-              error: error.message
+              }
             };
           }
         }
@@ -331,9 +319,7 @@ async function handleWatchlistLiveFinance(
 
   let successCount = 0;
 
-  for (
-    const result of results
-  ) {
+  for (const result of results) {
     const company =
       result.company;
 
@@ -408,7 +394,6 @@ async function handleWatchlistLiveFinance(
   return answer;
 }
 
-
 /* =========================================================
    SINGLE COMPANY LIVE FINANCE
 ========================================================= */
@@ -421,7 +406,7 @@ async function handleLivePrice(
     const quote =
       await getQuote(
         company.finnhubSymbol ||
-        company.symbol
+          company.symbol
       );
 
     const answer =
@@ -448,7 +433,6 @@ async function handleLivePrice(
   }
 }
 
-
 /* =========================================================
    NEWS
 ========================================================= */
@@ -461,7 +445,7 @@ async function handleNews(
     const news =
       await getLatestNews(
         company.finnhubSymbol ||
-        company.symbol
+          company.symbol
       );
 
     if (
@@ -494,17 +478,12 @@ async function handleNews(
 
         if (item.summary) {
           lines.push(
-            item.summary.slice(
-              0,
-              250
-            )
+            item.summary.slice(0, 250)
           );
         }
 
         if (item.url) {
-          lines.push(
-            item.url
-          );
+          lines.push(item.url);
         }
       }
     );
@@ -530,7 +509,6 @@ async function handleNews(
   }
 }
 
-
 /* =========================================================
    EARNINGS
 ========================================================= */
@@ -543,7 +521,7 @@ async function handleEarnings(
     const data =
       await getEarnings(
         company.finnhubSymbol ||
-        company.symbol
+          company.symbol
       );
 
     const earnings =
@@ -602,7 +580,6 @@ async function handleEarnings(
     return answer;
   }
 }
-
 
 /* =========================================================
    SEC
@@ -683,6 +660,26 @@ async function handleSEC(
   }
 }
 
+/* =========================================================
+   GREETING
+========================================================= */
+
+function isGreeting(text) {
+  const value =
+    String(text || "")
+      .toLowerCase()
+      .trim();
+
+  return (
+    value === "hello" ||
+    value === "hi" ||
+    value === "hey" ||
+    value === "hii" ||
+    value === "good morning" ||
+    value === "good afternoon" ||
+    value === "good evening"
+  );
+}
 
 /* =========================================================
    NATURAL MESSAGE
@@ -696,47 +693,44 @@ async function handleNaturalMessage(
   const telegramId =
     String(ctx.from.id);
 
+  const cleanText =
+    String(text || "").trim();
 
   /* =======================================================
      PENDING COMPANY FOLLOW-UP
-
-     Example:
-
-     User: its live finance
-     Bot: Which company?
-     User: tesla
-
-     The second message must NOT go to Gemini.
   ======================================================= */
 
   if (
     user.pendingIntent &&
-    isCompanyOnlyMessage(text)
+    isCompanyOnlyMessage(cleanText)
   ) {
     const company =
       await getCompanyBySymbol(
-        text.toUpperCase()
+        cleanText.toUpperCase()
       );
 
     if (!company) {
-      const answer =
-        `⚠️ I couldn't find ${text} as a supported company.`;
+      const resolved =
+        resolveCompany(cleanText);
 
-      await ctx.reply(answer);
+      if (!resolved) {
+        const answer =
+          `⚠️ I couldn't find ${cleanText} as a supported company.`;
 
-      user.pendingIntent = null;
-      user.pendingCompany = null;
+        await ctx.reply(answer);
 
-      await user.save();
+        user.pendingIntent = null;
+        user.pendingCompany = null;
 
-      await saveConversation(
-        telegramId,
-        text,
-        answer
-      );
+        await user.save();
 
-      return;
+        return;
+      }
     }
+
+    const finalCompany =
+      company ||
+      resolveCompany(cleanText);
 
     const pendingIntent =
       user.pendingIntent;
@@ -746,110 +740,206 @@ async function handleNaturalMessage(
 
     await user.save();
 
-
-    /* LIVE PRICE */
-
     if (
-      pendingIntent ===
-      "live_price"
+      pendingIntent === "live_price"
     ) {
       const answer =
         await handleLivePrice(
           ctx,
-          company
+          finalCompany
         );
 
       await saveConversation(
         telegramId,
-        text,
+        cleanText,
         answer,
-        company
+        finalCompany
       );
 
       return;
     }
 
-
-    /* NEWS */
-
     if (
-      pendingIntent ===
-      "news"
+      pendingIntent === "news"
     ) {
       const answer =
         await handleNews(
           ctx,
-          company
+          finalCompany
         );
 
       await saveConversation(
         telegramId,
-        text,
+        cleanText,
         answer,
-        company
+        finalCompany
       );
 
       return;
     }
 
-
-    /* EARNINGS */
-
     if (
-      pendingIntent ===
-      "earnings"
+      pendingIntent === "earnings"
     ) {
       const answer =
         await handleEarnings(
           ctx,
-          company
+          finalCompany
         );
 
       await saveConversation(
         telegramId,
-        text,
+        cleanText,
         answer,
-        company
+        finalCompany
       );
 
       return;
     }
 
-
-    /* SEC */
-
     if (
-      pendingIntent ===
-      "sec"
+      pendingIntent === "sec"
     ) {
       const answer =
         await handleSEC(
           ctx,
-          company
+          finalCompany
         );
 
       await saveConversation(
         telegramId,
-        text,
+        cleanText,
         answer,
-        company
+        finalCompany
+      );
+
+      return;
+    }
+
+    if (
+      pendingIntent === "add"
+    ) {
+      const result =
+        await addToWatchlist(
+          user,
+          finalCompany
+        );
+
+      await ctx.reply(
+        result.message
+      );
+
+      await saveConversation(
+        telegramId,
+        cleanText,
+        result.message,
+        finalCompany
+      );
+
+      return;
+    }
+
+    if (
+      pendingIntent === "remove"
+    ) {
+      const result =
+        await removeFromWatchlist(
+          user,
+          finalCompany
+        );
+
+      await ctx.reply(
+        result.message
+      );
+
+      await saveConversation(
+        telegramId,
+        cleanText,
+        result.message,
+        finalCompany
       );
 
       return;
     }
   }
 
+  /* =======================================================
+     GREETING
+  ======================================================= */
+
+  if (isGreeting(cleanText)) {
+    const answer = [
+      "👋 Hello!",
+      "",
+      "I'm Atlas AI, your financial assistant.",
+      "",
+      "Try:",
+      "• Track Tesla",
+      "• What's Tesla's price?",
+      "• Show my watchlist",
+      "• My watchlist live finance",
+      "• Latest news about Apple"
+    ].join("\n");
+
+    await ctx.reply(answer);
+
+    await saveConversation(
+      telegramId,
+      cleanText,
+      answer
+    );
+
+    return;
+  }
 
   /* =======================================================
-     NORMAL COMPANY RESOLUTION
+     HELP
+  ======================================================= */
+
+  if (isHelpRequest(cleanText)) {
+    const answer = [
+      "🤖 Here's what I can do:",
+      "",
+      "📊 Watchlist",
+      "• Track Tesla",
+      "• Add Apple to my watchlist",
+      "• Remove Tesla from my watchlist",
+      "• Show my watchlist",
+      "",
+      "💰 Finance",
+      "• Tesla price",
+      "• What's Apple's price now?",
+      "• Live finance for Tesla",
+      "• My watchlist live finance",
+      "",
+      "📰 Research",
+      "• Latest news about Tesla",
+      "• Tesla earnings",
+      "• Tesla SEC filings"
+    ].join("\n");
+
+    await ctx.reply(answer);
+
+    await saveConversation(
+      telegramId,
+      cleanText,
+      answer
+    );
+
+    return;
+  }
+
+  /* =======================================================
+     COMPANY RESOLUTION
   ======================================================= */
 
   let company =
-    getCompanyFromMessage(text);
-
+    getCompanyFromMessage(
+      cleanText
+    );
 
   /* =======================================================
-     CHECK WATCHLIST FOR COMPANY
+     CHECK USER WATCHLIST
   ======================================================= */
 
   if (
@@ -857,22 +947,22 @@ async function handleNaturalMessage(
     user.watchlist?.length
   ) {
     const lower =
-      text.toLowerCase();
+      cleanText.toLowerCase();
 
     for (
       const item of user.watchlist
     ) {
+      const itemName =
+        String(item.name)
+          .toLowerCase();
+
+      const itemSymbol =
+        String(item.symbol)
+          .toLowerCase();
+
       if (
-        lower.includes(
-          String(
-            item.name
-          ).toLowerCase()
-        ) ||
-        lower.includes(
-          String(
-            item.symbol
-          ).toLowerCase()
-        )
+        lower.includes(itemName) ||
+        lower.includes(itemSymbol)
       ) {
         company =
           (await getCompanyBySymbol(
@@ -888,6 +978,42 @@ async function handleNaturalMessage(
     }
   }
 
+  /* =======================================================
+     COMPANY ONLY MESSAGE WITHOUT PENDING INTENT
+
+     Example:
+     User: tesla
+     Bot: shows Tesla price
+
+     This prevents "tesla" from going to Gemini.
+  ======================================================= */
+
+  if (
+    !user.pendingIntent &&
+    isCompanyOnlyMessage(cleanText)
+  ) {
+    if (!company) {
+      company =
+        resolveCompany(cleanText);
+    }
+
+    if (company) {
+      const answer =
+        await handleLivePrice(
+          ctx,
+          company
+        );
+
+      await saveConversation(
+        telegramId,
+        cleanText,
+        answer,
+        company
+      );
+
+      return;
+    }
+  }
 
   /* =======================================================
      1. WATCHLIST LIVE FINANCE
@@ -895,7 +1021,7 @@ async function handleNaturalMessage(
 
   if (
     isWatchlistLiveFinanceRequest(
-      text
+      cleanText
     )
   ) {
     const answer =
@@ -906,20 +1032,21 @@ async function handleNaturalMessage(
 
     await saveConversation(
       telegramId,
-      text,
+      cleanText,
       answer
     );
 
     return;
   }
 
-
   /* =======================================================
      2. SHOW WATCHLIST
   ======================================================= */
 
   if (
-    isWatchlistRequest(text)
+    isWatchlistRequest(
+      cleanText
+    )
   ) {
     const answer =
       watchlistMessage(user);
@@ -928,24 +1055,31 @@ async function handleNaturalMessage(
 
     await saveConversation(
       telegramId,
-      text,
+      cleanText,
       answer
     );
 
     return;
   }
 
-
   /* =======================================================
-     3. ADD
+     3. ADD / TRACK / WATCH
   ======================================================= */
 
   if (
-    isAddRequest(text)
+    isAddRequest(cleanText)
   ) {
     if (!company) {
+      user.pendingIntent =
+        "add";
+
+      user.pendingCompany =
+        null;
+
+      await user.save();
+
       const answer =
-        "Which company would you like me to add to your watchlist?";
+        "Which company would you like to track?";
 
       await ctx.reply(answer);
 
@@ -964,7 +1098,7 @@ async function handleNaturalMessage(
 
     await saveConversation(
       telegramId,
-      text,
+      cleanText,
       result.message,
       company
     );
@@ -972,17 +1106,24 @@ async function handleNaturalMessage(
     return;
   }
 
-
   /* =======================================================
      4. REMOVE
   ======================================================= */
 
   if (
-    isRemoveRequest(text)
+    isRemoveRequest(cleanText)
   ) {
     if (!company) {
+      user.pendingIntent =
+        "remove";
+
+      user.pendingCompany =
+        null;
+
+      await user.save();
+
       const answer =
-        "Which company would you like me to remove from your watchlist?";
+        "Which company would you like to remove from your watchlist?";
 
       await ctx.reply(answer);
 
@@ -1001,7 +1142,7 @@ async function handleNaturalMessage(
 
     await saveConversation(
       telegramId,
-      text,
+      cleanText,
       result.message,
       company
     );
@@ -1009,13 +1150,14 @@ async function handleNaturalMessage(
     return;
   }
 
-
   /* =======================================================
      5. SINGLE COMPANY LIVE PRICE
   ======================================================= */
 
   if (
-    isLivePriceRequest(text)
+    isLivePriceRequest(
+      cleanText
+    )
   ) {
     if (!company) {
       user.pendingIntent =
@@ -1042,7 +1184,7 @@ async function handleNaturalMessage(
 
     await saveConversation(
       telegramId,
-      text,
+      cleanText,
       answer,
       company
     );
@@ -1050,13 +1192,12 @@ async function handleNaturalMessage(
     return;
   }
 
-
   /* =======================================================
      6. NEWS
   ======================================================= */
 
   if (
-    isNewsRequest(text)
+    isNewsRequest(cleanText)
   ) {
     if (!company) {
       user.pendingIntent =
@@ -1083,7 +1224,7 @@ async function handleNaturalMessage(
 
     await saveConversation(
       telegramId,
-      text,
+      cleanText,
       answer,
       company
     );
@@ -1091,13 +1232,14 @@ async function handleNaturalMessage(
     return;
   }
 
-
   /* =======================================================
      7. EARNINGS
   ======================================================= */
 
   if (
-    isEarningsRequest(text)
+    isEarningsRequest(
+      cleanText
+    )
   ) {
     if (!company) {
       user.pendingIntent =
@@ -1124,7 +1266,7 @@ async function handleNaturalMessage(
 
     await saveConversation(
       telegramId,
-      text,
+      cleanText,
       answer,
       company
     );
@@ -1132,13 +1274,12 @@ async function handleNaturalMessage(
     return;
   }
 
-
   /* =======================================================
      8. SEC
   ======================================================= */
 
   if (
-    isSecRequest(text)
+    isSecRequest(cleanText)
   ) {
     if (!company) {
       user.pendingIntent =
@@ -1165,14 +1306,13 @@ async function handleNaturalMessage(
 
     await saveConversation(
       telegramId,
-      text,
+      cleanText,
       answer,
       company
     );
 
     return;
   }
-
 
   /* =======================================================
      9. AI CONTEXT
@@ -1188,12 +1328,12 @@ async function handleNaturalMessage(
       ] = await Promise.all([
         getQuote(
           company.finnhubSymbol ||
-          company.symbol
+            company.symbol
         ),
 
         getCompanyProfile(
           company.finnhubSymbol ||
-          company.symbol
+            company.symbol
         )
       ]);
 
@@ -1211,51 +1351,76 @@ async function handleNaturalMessage(
     }
   }
 
-
   /* =======================================================
      10. GEMINI / NORMAL CONVERSATION
   ======================================================= */
 
-  const result =
-    await askAI({
-      telegramId,
-      user,
-      question: text,
-      context
-    });
+  try {
+    const result =
+      await askAI({
+        telegramId,
+        user,
+        question: cleanText,
+        context
+      });
 
+    if (!result.success) {
+      if (result.quota) {
+        const answer = [
+          "⚠️ The AI service has temporarily reached its usage limit.",
+          "",
+          "You can still use:",
+          "• Watchlist",
+          "• Track a company",
+          "• My watchlist live finance",
+          "• Live finance for a company",
+          "• Company news",
+          "• Earnings",
+          "• SEC filings"
+        ].join("\n");
 
-  /* =======================================================
-     AI ERROR
-  ======================================================= */
+        await ctx.reply(answer);
 
-  if (
-    !result.success
-  ) {
-    if (result.quota) {
-      const answer = [
-        "⚠️ The AI service has temporarily reached its usage limit.",
-        "",
-        "You can still use:",
-        "• Watchlist",
-        "• My watchlist live finance",
-        "• Live finance for a company",
-        "• Company news",
-        "• Earnings",
-        "• SEC filings"
-      ].join("\n");
+        await saveConversation(
+          telegramId,
+          cleanText,
+          answer,
+          company
+        );
+
+        return;
+      }
+
+      const answer =
+        "⚠️ I couldn't process that request right now. Please try again.";
 
       await ctx.reply(answer);
 
       await saveConversation(
         telegramId,
-        text,
+        cleanText,
         answer,
         company
       );
 
       return;
     }
+
+    await ctx.reply(
+      result.text
+    );
+
+    await saveConversation(
+      telegramId,
+      cleanText,
+      result.text,
+      company
+    );
+  } catch (error) {
+    console.error(
+      "Natural message error:",
+      error.message
+    );
 
     const answer =
       "⚠️ I couldn't process that request right now. Please try again.";
@@ -1264,31 +1429,12 @@ async function handleNaturalMessage(
 
     await saveConversation(
       telegramId,
-      text,
+      cleanText,
       answer,
       company
     );
-
-    return;
   }
-
-
-  /* =======================================================
-     AI SUCCESS
-  ======================================================= */
-
-  await ctx.reply(
-    result.text
-  );
-
-  await saveConversation(
-    telegramId,
-    text,
-    result.text,
-    company
-  );
 }
-
 
 /* =========================================================
    EXPORTS

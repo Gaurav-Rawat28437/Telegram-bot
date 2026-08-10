@@ -14,50 +14,55 @@ function isWatchlistRequest(text) {
   const value = normalize(text);
 
   return (
-    value.includes("watchlist") ||
-    value.includes("watch list") ||
-    value.includes("my watchlist") ||
-    value.includes("my watch list") ||
-    value.includes("show watchlist") ||
-    value.includes("show my watchlist") ||
-    value.includes("show watch list") ||
-    value.includes("show my watch list") ||
-    value.includes("what companies am i watching") ||
-    value.includes("which companies am i watching") ||
-    value.includes("companies am i watching") ||
-    value.includes("what am i watching") ||
+    value === "watchlist" ||
+    value === "watch list" ||
+    value === "my watchlist" ||
+    value === "my watch list" ||
+    value === "show watchlist" ||
+    value === "show my watchlist" ||
+    value === "show watch list" ||
+    value === "show my watch list" ||
+    value === "what companies am i watching" ||
+    value === "which companies am i watching" ||
+    value === "companies am i watching" ||
+    value === "what am i watching" ||
+    value === "what stocks am i watching" ||
+    value === "which stocks am i watching" ||
     value === "watching"
   );
 }
 
 /* =========================================================
-   ADD TO WATCHLIST
+   ADD / TRACK / WATCH COMPANY
 ========================================================= */
 
 function isAddRequest(text) {
   const value = normalize(text);
 
+  // Never treat plain "watch" as an add request
+  if (
+    value === "watch" ||
+    value === "track" ||
+    value === "add"
+  ) {
+    return false;
+  }
+
+  const action =
+    /\badd\b/.test(value) ||
+    /\btrack\b/.test(value) ||
+    /\bwatch\b/.test(value);
+
+  if (!action) {
+    return false;
+  }
+
   return (
-    /\badd\b/.test(value) &&
-    (
-      value.includes("watchlist") ||
-      value.includes("watch list") ||
-      value.includes("my watchlist") ||
-      value.includes("my watch list") ||
-      value.startsWith("add ") ||
-      value.startsWith("track ") ||
-      value.startsWith("watch ") ||
-      value === "add tesla" ||
-      value === "add apple" ||
-      value === "add microsoft" ||
-      value === "add nvidia" ||
-      value === "add amazon" ||
-      value === "add google" ||
-      value === "add alphabet" ||
-      value === "add meta" ||
-      value === "add facebook" ||
-      value === "add netflix"
-    )
+    value.includes("watchlist") ||
+    value.includes("watch list") ||
+    value.startsWith("add ") ||
+    value.startsWith("track ") ||
+    value.startsWith("watch ")
   );
 }
 
@@ -68,42 +73,47 @@ function isAddRequest(text) {
 function isRemoveRequest(text) {
   const value = normalize(text);
 
+  const action =
+    /\bremove\b/.test(value) ||
+    /\bdelete\b/.test(value) ||
+    /\bunwatch\b/.test(value) ||
+    /\bunwatch\b/.test(value);
+
+  if (!action) {
+    return false;
+  }
+
   return (
-    (
-      /\bremove\b/.test(value) ||
-      /\bdelete\b/.test(value) ||
-      /\bunwatch\b/.test(value)
-    ) &&
-    (
-      value.includes("watchlist") ||
-      value.includes("watch list") ||
-      value.includes("my watchlist") ||
-      value.includes("my watch list") ||
-      value.length <= 40
-    )
+    value.includes("watchlist") ||
+    value.includes("watch list") ||
+    value.startsWith("remove ") ||
+    value.startsWith("delete ") ||
+    value.startsWith("unwatch ")
   );
 }
 
 /* =========================================================
-   LIVE FINANCE / INDIVIDUAL COMPANY PRICE
+   LIVE FINANCE / COMPANY PRICE
 ========================================================= */
 
 function isLivePriceRequest(text) {
   const value = normalize(text);
 
   /*
-   * Existing phrases
-   */
+    Direct finance phrases
+  */
 
   if (
     value.includes("live finance") ||
     value.includes("live financial") ||
     value.includes("live price") ||
+    value.includes("live prices") ||
     value.includes("live stock") ||
     value.includes("live stock price") ||
     value.includes("current price") ||
     value.includes("current stock price") ||
     value.includes("stock price") ||
+    value.includes("stock prices") ||
     value.includes("price now") ||
     value.includes("price today") ||
     value.includes("share price") ||
@@ -121,16 +131,17 @@ function isLivePriceRequest(text) {
   }
 
   /*
-   * Natural price questions
-   *
-   * Tesla price
-   * Tesla current price
-   * Tesla stock price
-   * What is Tesla price
-   * What's Tesla price
-   * What about Tesla price
-   * How much is Tesla
-   */
+    Natural language price questions
+
+    Examples:
+    Tesla price
+    Tesla current price
+    Tesla stock price
+    What is Tesla price
+    What's Tesla price
+    What about Tesla price
+    How much is Tesla
+  */
 
   if (/\bprice\b/.test(value)) {
     return true;
@@ -205,8 +216,11 @@ function isNewsRequest(text) {
     value.includes("news about") ||
     value.includes("news on") ||
     value.includes("news for") ||
+    value.includes("latest update") ||
+    value.includes("latest updates") ||
     value.includes("what's the news") ||
-    value.includes("whats the news")
+    value.includes("whats the news") ||
+    value === "news"
   );
 }
 
@@ -239,6 +253,7 @@ function isSecRequest(text) {
     value.includes("sec filings") ||
     value.includes("sec report") ||
     value.includes("10-k") ||
+    value.includes("10k") ||
     value.includes("10q") ||
     value.includes("10-q") ||
     value.includes("filing") ||
@@ -288,7 +303,29 @@ function isCompanyOnlyMessage(text) {
 }
 
 /* =========================================================
-   HELP / START
+   GREETING
+========================================================= */
+
+function isGreetingRequest(text) {
+  const value = normalize(text);
+
+  return (
+    value === "hi" ||
+    value === "hello" ||
+    value === "hey" ||
+    value === "hii" ||
+    value === "hiii" ||
+    value === "good morning" ||
+    value === "good afternoon" ||
+    value === "good evening" ||
+    value === "how are you" ||
+    value === "how are you doing" ||
+    value === "how are things"
+  );
+}
+
+/* =========================================================
+   HELP
 ========================================================= */
 
 function isHelpRequest(text) {
@@ -297,6 +334,8 @@ function isHelpRequest(text) {
   return (
     value === "help" ||
     value === "/help" ||
+    value === "start" ||
+    value === "/start" ||
     value.includes("what can you do") ||
     value.includes("what can i ask")
   );
@@ -321,5 +360,7 @@ module.exports = {
   isSecRequest,
 
   isCompanyOnlyMessage,
+
+  isGreetingRequest,
   isHelpRequest
 };
