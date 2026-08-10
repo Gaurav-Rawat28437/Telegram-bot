@@ -9,17 +9,35 @@ const {
 } = require("../utils/companyResolver");
 
 const {
-  getQuote
+  getCompanyBySymbol
+} = require("../services/companyService");
+
+const {
+  getQuote,
+  getCompanyProfile,
+  getEarnings
 } = require("../services/finnhubService");
 
 const {
-  formatQuote,
-  formatWatchlistQuote
+  getLatestNews
+} = require("../services/newsService");
+
+const {
+  getCompanySubmissions,
+  getRecentFilings
+} = require("../services/secService");
+
+const {
+  formatQuote
 } = require("../utils/formatter");
 
 const {
-  isWatchlistRequest,
+  askAI
+} = require("../services/aiService");
+
+const {
   isWatchlistLiveFinanceRequest,
+  isWatchlistRequest,
   isAddRequest,
   isRemoveRequest,
   isLivePriceRequest,
@@ -31,7 +49,42 @@ const {
 
 /*
 |--------------------------------------------------------------------------
-| SAVE CONVERSATION
+| COMPANY EXTRACTION
+|--------------------------------------------------------------------------
+*/
+
+function extractCompanyText(text) {
+  return String(text || "")
+    .replace(
+      /\b(add|remove|delete|unwatch|watchlist|watch\s+list|to my watchlist|from my watchlist|please)\b/gi,
+      " "
+    )
+    .replace(
+      /\b(company|stock|stocks|shares|price|prices|live|finance|financial|update|updates)\b/gi,
+      " "
+    )
+    .trim();
+}
+
+
+function getCompanyFromMessage(text) {
+  const direct =
+    resolveCompany(text);
+
+  if (direct) {
+    return direct;
+  }
+
+  const cleaned =
+    extractCompanyText(text);
+
+  return resolveCompany(cleaned);
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| CONVERSATION
 |--------------------------------------------------------------------------
 */
 
@@ -46,7 +99,6 @@ async function saveConversation(
       telegramId,
       question,
       answer,
-
       companies: company
         ? [
             {
@@ -67,66 +119,6 @@ async function saveConversation(
 
 /*
 |--------------------------------------------------------------------------
-| RESOLVE COMPANY
-|--------------------------------------------------------------------------
-*/
-
-function getCompanyFromMessage(
-  text
-) {
-  return resolveCompany(text);
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| WATCHLIST MESSAGE
-|--------------------------------------------------------------------------
-*/
-
-function watchlistMessage(user) {
-  const watchlist =
-    user.watchlist || [];
-
-  if (
-    watchlist.length === 0
-  ) {
-    return [
-      "📊 Your Watchlist",
-      "",
-      "Your watchlist is currently empty.",
-      "",
-      "Try:",
-      "• Add Tesla to my watchlist",
-      "• Add Apple",
-      "• Add NVIDIA",
-      "• What companies am I watching?"
-    ].join("\n");
-  }
-
-  const companies =
-    watchlist
-      .map(
-        (item, index) =>
-          `${index + 1}. ${item.name} (${item.symbol})`
-      )
-      .join("\n");
-
-  return [
-    "📊 Your Watchlist",
-    "",
-    companies,
-    "",
-    "You can also ask:",
-    "• My watchlist live finance",
-    "• Latest news about Tesla",
-    "• Tesla earnings"
-  ].join("\n");
-}
-
-
-/*
-|--------------------------------------------------------------------------
 | ADD WATCHLIST
 |--------------------------------------------------------------------------
 */
@@ -142,13 +134,15 @@ async function addToWatchlist(
   const exists =
     user.watchlist.some(
       (item) =>
-        item.symbol.toUpperCase() ===
-        company.symbol.toUpperCase()
+        String(item.symbol)
+          .toUpperCase() ===
+        String(company.symbol)
+          .toUpperCase()
     );
 
   if (exists) {
     return {
-      success: false,
+      added: false,
       message:
         `📌 ${company.name} (${company.symbol}) is already in your watchlist.`
     };
@@ -162,7 +156,7 @@ async function addToWatchlist(
   await user.save();
 
   return {
-    success: true,
+    added: true,
     message:
       `✅ ${company.name} (${company.symbol}) has been added to your watchlist.`
   };
@@ -183,31 +177,32 @@ async function removeFromWatchlist(
     user.watchlist = [];
   }
 
-  const oldLength =
+  const before =
     user.watchlist.length;
 
   user.watchlist =
     user.watchlist.filter(
       (item) =>
-        item.symbol.toUpperCase() !==
-        company.symbol.toUpperCase()
+        String(item.symbol)
+          .toUpperCase() !==
+        String(company.symbol)
+          .toUpperCase()
     );
 
   if (
-    oldLength ===
-    user.watchlist.length
+    user.watchlist.length === before
   ) {
     return {
-      success: false,
+      removed: false,
       message:
-        `📌 ${company.name} (${company.symbol}) is not in your watchlist.`
+        `📌 ${company.name} (${company.symbol}) isn't currently in your watchlist.`
     };
   }
 
   await user.save();
 
   return {
-    success: true,
+    removed: true,
     message:
       `✅ ${company.name} (${company.symbol}) has been removed from your watchlist.`
   };
@@ -216,17 +211,279 @@ async function removeFromWatchlist(
 
 /*
 |--------------------------------------------------------------------------
-| ONE COMPANY LIVE FINANCE
+| SHOW WATCHLIST
 |--------------------------------------------------------------------------
 */
 
-async function sendCompanyLiveFinance(
+function watchlistMessage(user) {
+  const list =
+    user.watchlist || [];
+
+  if (list.length === 0) {
+    return [
+      "📊 Your Watchlist",
+      "",
+      "Your watchlist is currently empty.",
+      "",
+      "Try:",
+      "• Add Tesla to my watchlist",
+      "• Add Apple",
+      "• Add NVIDIA",
+      "• What companies am I watching?",
+      "• My watchlist live finance"
+    ].join("\n");
+  }
+
+  const companies =
+    list
+      .map(
+        (company, index) =>
+          `${index + 1}. ${company.name} (${company.symbol})`
+      )
+      .join("\n");
+
+  return [
+    "📊 Your Watchlist",
+    "",
+    companies,
+    "",
+    "You can ask:",
+    "• What's Tesla's price now?",
+    "• Latest news about Apple",
+    "• Tesla earnings",
+    "• Show Tesla SEC filings",
+    "• My watchlist live finance"
+  ].join("\n");
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| WATCHLIST LIVE FINANCE
+|--------------------------------------------------------------------------
+|
+| This handles:
+|
+| my watchlist live finance
+| live finance for my watchlist
+| watchlist live prices
+| live prices of my watchlist
+| show live finance for my watchlist
+| live update for companies I'm watching
+|
+|--------------------------------------------------------------------------
+*/
+
+async function handleWatchlistLiveFinance(
+  ctx,
+  user
+) {
+  const list =
+    user.watchlist || [];
+
+  if (list.length === 0) {
+    const answer = [
+      "📊 Your Watchlist",
+      "",
+      "Your watchlist is currently empty.",
+      "",
+      "Add a company first:",
+      "• Add Tesla to my watchlist",
+      "• Add Apple",
+      "• Add NVIDIA"
+    ].join("\n");
+
+    await ctx.reply(answer);
+
+    return answer;
+  }
+
+  const lines = [
+    "📊 Live Finance — Your Watchlist",
+    "",
+    "Fetching current market data..."
+  ];
+
+  /*
+   * Fetch all companies independently.
+   * One failed company should not stop
+   * the entire watchlist response.
+   */
+
+  const results =
+    await Promise.all(
+      list.map(
+        async (item) => {
+          try {
+            const company =
+              await getCompanyBySymbol(
+                item.symbol
+              );
+
+            const resolvedCompany =
+              company || {
+                name:
+                  item.name,
+                symbol:
+                  item.symbol,
+                finnhubSymbol:
+                  item.symbol
+              };
+
+            const quote =
+              await getQuote(
+                resolvedCompany.finnhubSymbol ||
+                  resolvedCompany.symbol
+              );
+
+            return {
+              success: true,
+              company:
+                resolvedCompany,
+              quote
+            };
+          } catch (error) {
+            console.error(
+              `Watchlist finance error for ${item.symbol}:`,
+              error.message
+            );
+
+            return {
+              success: false,
+              company: {
+                name:
+                  item.name,
+                symbol:
+                  item.symbol
+              },
+              error:
+                error.message
+            };
+          }
+        }
+      )
+    );
+
+  /*
+   * Remove temporary loading message
+   * by simply sending the final response.
+   */
+
+  lines.length = 0;
+
+  lines.push(
+    "📊 Live Finance — Your Watchlist",
+    ""
+  );
+
+  let successCount = 0;
+
+  for (
+    const result of results
+  ) {
+    const company =
+      result.company;
+
+    if (!result.success) {
+      lines.push(
+        `⚠️ ${company.name} (${company.symbol})`,
+        "Live data is currently unavailable.",
+        ""
+      );
+
+      continue;
+    }
+
+    successCount++;
+
+    const quote =
+      result.quote || {};
+
+    const price =
+      Number(
+        quote.c || 0
+      );
+
+    const change =
+      Number(
+        quote.d || 0
+      );
+
+    const changePercent =
+      Number(
+        quote.dp || 0
+      );
+
+    const high =
+      Number(
+        quote.h || 0
+      );
+
+    const low =
+      Number(
+        quote.l || 0
+      );
+
+    const open =
+      Number(
+        quote.o || 0
+      );
+
+    const previousClose =
+      Number(
+        quote.pc || 0
+      );
+
+    const icon =
+      change >= 0
+        ? "🟢"
+        : "🔴";
+
+    const sign =
+      change >= 0
+        ? "+"
+        : "";
+
+    lines.push(
+      `📈 ${company.name} (${company.symbol})`,
+      `💰 Price: $${price.toFixed(2)}`,
+      `${icon} Change: ${sign}${change.toFixed(2)} (${sign}${changePercent.toFixed(2)}%)`,
+      `📈 High: $${high.toFixed(2)}`,
+      `📉 Low: $${low.toFixed(2)}`,
+      `🔓 Open: $${open.toFixed(2)}`,
+      `🔒 Previous Close: $${previousClose.toFixed(2)}`,
+      ""
+    );
+  }
+
+  lines.push(
+    `🕐 Live data fetched just now.`,
+    `📊 ${successCount}/${list.length} companies updated.`
+  );
+
+  const answer =
+    lines.join("\n");
+
+  await ctx.reply(answer);
+
+  return answer;
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| SINGLE COMPANY LIVE FINANCE
+|--------------------------------------------------------------------------
+*/
+
+async function handleLivePrice(
   ctx,
   company
 ) {
   try {
     const quote =
       await getQuote(
+        company.finnhubSymbol ||
         company.symbol
       );
 
@@ -236,23 +493,19 @@ async function sendCompanyLiveFinance(
         quote
       );
 
-    await ctx.reply(
-      answer
-    );
+    await ctx.reply(answer);
 
     return answer;
   } catch (error) {
     console.error(
-      `Live finance error for ${company.symbol}:`,
+      "Live price error:",
       error.message
     );
 
     const answer =
-      `⚠️ Live finance data for ${company.name} (${company.symbol}) is currently unavailable.`;
+      `⚠️ Live market data for ${company.name} (${company.symbol}) is temporarily unavailable.`;
 
-    await ctx.reply(
-      answer
-    );
+    await ctx.reply(answer);
 
     return answer;
   }
@@ -261,97 +514,254 @@ async function sendCompanyLiveFinance(
 
 /*
 |--------------------------------------------------------------------------
-| ENTIRE WATCHLIST LIVE FINANCE
+| NEWS
 |--------------------------------------------------------------------------
 */
 
-async function sendWatchlistLiveFinance(
+async function handleNews(
   ctx,
-  user
+  company
 ) {
-  const watchlist =
-    user.watchlist || [];
+  try {
+    const news =
+      await getLatestNews(
+        company.finnhubSymbol ||
+        company.symbol
+      );
 
-  if (
-    watchlist.length === 0
-  ) {
-    const answer =
-      [
-        "📊 Your Watchlist",
-        "",
-        "Your watchlist is currently empty.",
-        "",
-        "Add a company first:",
-        "• Add Tesla to my watchlist",
-        "• Add Apple to my watchlist"
-      ].join("\n");
+    if (
+      !news ||
+      news.length === 0
+    ) {
+      const answer =
+        `📰 No recent news was found for ${company.name} (${company.symbol}).`;
 
-    await ctx.reply(
-      answer
+      await ctx.reply(answer);
+
+      return answer;
+    }
+
+    const latest =
+      news.slice(0, 5);
+
+    const lines = [
+      `📰 ${company.name} (${company.symbol})`,
+      "",
+      "Latest developments:"
+    ];
+
+    latest.forEach(
+      (item, index) => {
+        lines.push(
+          "",
+          `${index + 1}. ${item.headline || "Untitled"}`
+        );
+
+        if (item.summary) {
+          lines.push(
+            item.summary.slice(
+              0,
+              250
+            )
+          );
+        }
+
+        if (item.url) {
+          lines.push(
+            item.url
+          );
+        }
+      }
     );
+
+    const answer =
+      lines.join("\n");
+
+    await ctx.reply(answer);
+
+    return answer;
+  } catch (error) {
+    console.error(
+      "News error:",
+      error.message
+    );
+
+    const answer =
+      `⚠️ I couldn't retrieve recent news for ${company.name}.`;
+
+    await ctx.reply(answer);
 
     return answer;
   }
-
-  const lines = [
-    "📊 Your Watchlist — Live Finance",
-    "",
-    "🔴 Live market snapshot",
-    ""
-  ];
-
-  for (
-    const item of watchlist
-  ) {
-    try {
-      const company = {
-        name: item.name,
-        symbol: item.symbol
-      };
-
-      const quote =
-        await getQuote(
-          item.symbol
-        );
-
-      lines.push(
-        formatWatchlistQuote(
-          company,
-          quote
-        ),
-        ""
-      );
-    } catch (error) {
-      console.error(
-        `Watchlist live finance error for ${item.symbol}:`,
-        error.message
-      );
-
-      lines.push(
-        `⚠️ ${item.name} (${item.symbol}) — data unavailable`,
-        ""
-      );
-    }
-  }
-
-  lines.push(
-    "🕐 Live market data fetched just now."
-  );
-
-  const answer =
-    lines.join("\n");
-
-  await ctx.reply(
-    answer
-  );
-
-  return answer;
 }
 
 
 /*
 |--------------------------------------------------------------------------
-| MAIN HANDLER
+| EARNINGS
+|--------------------------------------------------------------------------
+*/
+
+async function handleEarnings(
+  ctx,
+  company
+) {
+  try {
+    const data =
+      await getEarnings(
+        company.finnhubSymbol ||
+        company.symbol
+      );
+
+    const earnings =
+      data?.earningsCalendar || [];
+
+    const relevant =
+      earnings.slice(0, 3);
+
+    if (
+      relevant.length === 0
+    ) {
+      const answer =
+        `📊 No recent earnings information was returned for ${company.name} (${company.symbol}).`;
+
+      await ctx.reply(answer);
+
+      return answer;
+    }
+
+    const lines = [
+      `📊 ${company.name} (${company.symbol})`,
+      "",
+      "Recent / upcoming earnings:"
+    ];
+
+    relevant.forEach(
+      (item) => {
+        lines.push(
+          "",
+          `📅 Date: ${item.date || "N/A"}`,
+          `EPS actual: ${item.epsActual ?? "N/A"}`,
+          `EPS estimate: ${item.epsEstimate ?? "N/A"}`,
+          `Revenue actual: ${item.revenueActual ?? "N/A"}`,
+          `Revenue estimate: ${item.revenueEstimate ?? "N/A"}`
+        );
+      }
+    );
+
+    const answer =
+      lines.join("\n");
+
+    await ctx.reply(answer);
+
+    return answer;
+  } catch (error) {
+    console.error(
+      "Earnings error:",
+      error.message
+    );
+
+    const answer =
+      `⚠️ I couldn't retrieve earnings information for ${company.name}.`;
+
+    await ctx.reply(answer);
+
+    return answer;
+  }
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| SEC
+|--------------------------------------------------------------------------
+*/
+
+async function handleSEC(
+  ctx,
+  company
+) {
+  /*
+   * SEC requires a CIK.
+   * If your resolver doesn't have one,
+   * return a clean response instead of crashing.
+   */
+
+  if (!company.cik) {
+    const answer =
+      `⚠️ SEC CIK information isn't configured for ${company.name} yet.`;
+
+    await ctx.reply(answer);
+
+    return answer;
+  }
+
+  try {
+    const data =
+      await getCompanySubmissions(
+        company.cik
+      );
+
+    const filings =
+      getRecentFilings(
+        data,
+        5
+      );
+
+    if (
+      filings.length === 0
+    ) {
+      const answer =
+        `📄 No recent SEC filings were found for ${company.name}.`;
+
+      await ctx.reply(answer);
+
+      return answer;
+    }
+
+    const lines = [
+      `📄 ${company.name} (${company.symbol})`,
+      "",
+      "Recent SEC filings:"
+    ];
+
+    filings.forEach(
+      (filing, index) => {
+        lines.push(
+          "",
+          `${index + 1}. ${filing.form}`,
+          `Date: ${filing.filingDate}`,
+          `Accession: ${filing.accessionNumber}`,
+          `Document: ${filing.primaryDocument}`
+        );
+      }
+    );
+
+    const answer =
+      lines.join("\n");
+
+    await ctx.reply(answer);
+
+    return answer;
+  } catch (error) {
+    console.error(
+      "SEC error:",
+      error.message
+    );
+
+    const answer =
+      `⚠️ I couldn't retrieve SEC filings for ${company.name}.`;
+
+    await ctx.reply(answer);
+
+    return answer;
+  }
+}
+
+
+/*
+|--------------------------------------------------------------------------
+| NATURAL MESSAGE
 |--------------------------------------------------------------------------
 */
 
@@ -363,41 +773,82 @@ async function handleNaturalMessage(
   const telegramId =
     String(ctx.from.id);
 
-  const cleanText =
-    String(text || "").trim();
+  /*
+   * Resolve company from the message.
+   */
+
+  let company =
+    getCompanyFromMessage(text);
+
+  /*
+   * If no company was directly mentioned,
+   * try the user's watchlist.
+   */
+
+  if (
+    !company &&
+    user.watchlist?.length
+  ) {
+    const lower =
+      text.toLowerCase();
+
+    for (
+      const item of user.watchlist
+    ) {
+      if (
+        lower.includes(
+          String(
+            item.name
+          ).toLowerCase()
+        ) ||
+        lower.includes(
+          String(
+            item.symbol
+          ).toLowerCase()
+        )
+      ) {
+        company =
+          (await getCompanyBySymbol(
+            item.symbol
+          )) || {
+            name:
+              item.name,
+            symbol:
+              item.symbol,
+            finnhubSymbol:
+              item.symbol
+          };
+
+        break;
+      }
+    }
+  }
+
 
   /*
   |--------------------------------------------------------------------------
-  | 1. MY WATCHLIST LIVE FINANCE
+  | 1. WATCHLIST LIVE FINANCE
   |--------------------------------------------------------------------------
   |
-  | Example:
-  |
-  | "my watchlist live finance"
-  |
-  | This MUST run before normal watchlist.
+  | IMPORTANT:
+  | This must come BEFORE isWatchlistRequest().
   |
   */
 
   if (
     isWatchlistLiveFinanceRequest(
-      cleanText
+      text
     )
   ) {
-    user.pendingIntent =
-      "live_finance";
-
-    await user.save();
-
     const answer =
-      await sendWatchlistLiveFinance(
+      await handleWatchlistLiveFinance(
         ctx,
         user
       );
 
     await saveConversation(
       telegramId,
-      cleanText,
+      text,
       answer
     );
 
@@ -407,31 +858,21 @@ async function handleNaturalMessage(
 
   /*
   |--------------------------------------------------------------------------
-  | 2. NORMAL WATCHLIST
+  | 2. SHOW WATCHLIST
   |--------------------------------------------------------------------------
   */
 
   if (
-    isWatchlistRequest(
-      cleanText
-    )
+    isWatchlistRequest(text)
   ) {
-    user.pendingIntent = "";
-
-    await user.save();
-
     const answer =
-      watchlistMessage(
-        user
-      );
+      watchlistMessage(user);
 
-    await ctx.reply(
-      answer
-    );
+    await ctx.reply(answer);
 
     await saveConversation(
       telegramId,
-      cleanText,
+      text,
       answer
     );
 
@@ -441,32 +882,21 @@ async function handleNaturalMessage(
 
   /*
   |--------------------------------------------------------------------------
-  | 3. ADD COMPANY
+  | 3. ADD
   |--------------------------------------------------------------------------
   */
 
   if (
-    isAddRequest(
-      cleanText
-    )
+    isAddRequest(text)
   ) {
-    const company =
-      getCompanyFromMessage(
-        cleanText
-      );
-
     if (!company) {
       const answer =
         "Which company would you like me to add to your watchlist?";
 
-      await ctx.reply(
-        answer
-      );
+      await ctx.reply(answer);
 
       return;
     }
-
-    user.pendingIntent = "";
 
     const result =
       await addToWatchlist(
@@ -480,7 +910,7 @@ async function handleNaturalMessage(
 
     await saveConversation(
       telegramId,
-      cleanText,
+      text,
       result.message,
       company
     );
@@ -491,32 +921,21 @@ async function handleNaturalMessage(
 
   /*
   |--------------------------------------------------------------------------
-  | 4. REMOVE COMPANY
+  | 4. REMOVE
   |--------------------------------------------------------------------------
   */
 
   if (
-    isRemoveRequest(
-      cleanText
-    )
+    isRemoveRequest(text)
   ) {
-    const company =
-      getCompanyFromMessage(
-        cleanText
-      );
-
     if (!company) {
       const answer =
         "Which company would you like me to remove from your watchlist?";
 
-      await ctx.reply(
-        answer
-      );
+      await ctx.reply(answer);
 
       return;
     }
-
-    user.pendingIntent = "";
 
     const result =
       await removeFromWatchlist(
@@ -530,7 +949,7 @@ async function handleNaturalMessage(
 
     await saveConversation(
       telegramId,
-      cleanText,
+      text,
       result.message,
       company
     );
@@ -541,66 +960,31 @@ async function handleNaturalMessage(
 
   /*
   |--------------------------------------------------------------------------
-  | 5. LIVE FINANCE
+  | 5. SINGLE COMPANY LIVE PRICE
   |--------------------------------------------------------------------------
-  |
-  | Examples:
-  |
-  | "tesla live finance"
-  | "what's Tesla's price now?"
-  | "its live finance"
-  |
   */
 
   if (
-    isLivePriceRequest(
-      cleanText
-    )
+    isLivePriceRequest(text)
   ) {
-    const company =
-      getCompanyFromMessage(
-        cleanText
-      );
-
     if (!company) {
-      /*
-       * Remember the user's request.
-       *
-       * Next message:
-       *
-       * "tesla"
-       *
-       * will be treated as live finance.
-       */
-
-      user.pendingIntent =
-        "live_finance";
-
-      await user.save();
-
       const answer =
         "Which company would you like a live finance update for?";
 
-      await ctx.reply(
-        answer
-      );
+      await ctx.reply(answer);
 
       return;
     }
 
-    user.pendingIntent = "";
-
-    await user.save();
-
     const answer =
-      await sendCompanyLiveFinance(
+      await handleLivePrice(
         ctx,
         company
       );
 
     await saveConversation(
       telegramId,
-      cleanText,
+      text,
       answer,
       company
     );
@@ -611,314 +995,33 @@ async function handleNaturalMessage(
 
   /*
   |--------------------------------------------------------------------------
-  | 6. FOLLOW-UP COMPANY
-  |--------------------------------------------------------------------------
-  |
-  | This fixes:
-  |
-  | User: its live finance
-  | Bot: Which company?
-  | User: tesla
-  |
-  | Tesla is now interpreted according
-  | to pendingIntent.
-  |
-  */
-
-  if (
-    user.pendingIntent ===
-    "live_finance"
-  ) {
-    const company =
-      getCompanyFromMessage(
-        cleanText
-      );
-
-    if (company) {
-      user.pendingIntent = "";
-
-      await user.save();
-
-      const answer =
-        await sendCompanyLiveFinance(
-          ctx,
-          company
-        );
-
-      await saveConversation(
-        telegramId,
-        cleanText,
-        answer,
-        company
-      );
-
-      return;
-    }
-  }
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | 7. NEWS
+  | 6. NEWS
   |--------------------------------------------------------------------------
   */
 
   if (
-    isNewsRequest(
-      cleanText
-    )
+    isNewsRequest(text)
   ) {
-    const company =
-      getCompanyFromMessage(
-        cleanText
-      );
-
     if (!company) {
       const answer =
         "Which company would you like the latest news for?";
 
-      await ctx.reply(
-        answer
-      );
+      await ctx.reply(answer);
 
       return;
     }
 
-    user.pendingIntent = "";
-
-    await user.save();
-
-    try {
-      const {
-        getCompanyNews
-      } =
-        require(
-          "../services/finnhubService"
-        );
-
-      const today =
-        new Date();
-
-      const previous =
-        new Date();
-
-      previous.setDate(
-        previous.getDate() - 7
-      );
-
-      const from =
-        previous
-          .toISOString()
-          .split("T")[0];
-
-      const to =
-        today
-          .toISOString()
-          .split("T")[0];
-
-      const news =
-        await getCompanyNews(
-          company.symbol,
-          from,
-          to
-        );
-
-      if (
-        !news ||
-        news.length === 0
-      ) {
-        const answer =
-          `📰 No recent news found for ${company.name} (${company.symbol}).`;
-
-        await ctx.reply(
-          answer
-        );
-
-        return;
-      }
-
-      const topNews =
-        news.slice(0, 5);
-
-      const lines = [
-        `📰 Latest News — ${company.name} (${company.symbol})`,
-        ""
-      ];
-
-      topNews.forEach(
-        (item, index) => {
-          lines.push(
-            `${index + 1}. ${item.headline || "Untitled"}`,
-            item.url || "",
-            ""
-          );
-        }
-      );
-
-      const answer =
-        lines.join("\n");
-
-      await ctx.reply(
-        answer
-      );
-
-      await saveConversation(
-        telegramId,
-        cleanText,
-        answer,
+    const answer =
+      await handleNews(
+        ctx,
         company
       );
 
-      return;
-    } catch (error) {
-      console.error(
-        "News error:",
-        error.message
-      );
-
-      await ctx.reply(
-        "⚠️ I couldn't retrieve the latest news right now."
-      );
-
-      return;
-    }
-  }
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | 8. EARNINGS
-  |--------------------------------------------------------------------------
-  */
-
-  if (
-    isEarningsRequest(
-      cleanText
-    )
-  ) {
-    const company =
-      getCompanyFromMessage(
-        cleanText
-      );
-
-    if (!company) {
-      await ctx.reply(
-        "Which company's earnings would you like to see?"
-      );
-
-      return;
-    }
-
-    user.pendingIntent = "";
-
-    await user.save();
-
-    try {
-      const {
-        getEarnings
-      } =
-        require(
-          "../services/finnhubService"
-        );
-
-      const data =
-        await getEarnings(
-          company.symbol
-        );
-
-      const earnings =
-        data?.earningsCalendar || [];
-
-      if (
-        earnings.length === 0
-      ) {
-        await ctx.reply(
-          `📊 No earnings information found for ${company.name}.`
-        );
-
-        return;
-      }
-
-      const lines = [
-        `📊 Earnings — ${company.name} (${company.symbol})`,
-        ""
-      ];
-
-      earnings
-        .slice(0, 5)
-        .forEach(
-          (item) => {
-            lines.push(
-              `📅 Date: ${item.date || "N/A"}`,
-              `EPS Actual: ${item.epsActual ?? "N/A"}`,
-              `EPS Estimate: ${item.epsEstimate ?? "N/A"}`,
-              `Revenue Actual: ${item.revenueActual ?? "N/A"}`,
-              `Revenue Estimate: ${item.revenueEstimate ?? "N/A"}`,
-              ""
-            );
-          }
-        );
-
-      const answer =
-        lines.join("\n");
-
-      await ctx.reply(
-        answer
-      );
-
-      await saveConversation(
-        telegramId,
-        cleanText,
-        answer,
-        company
-      );
-
-      return;
-    } catch (error) {
-      console.error(
-        "Earnings error:",
-        error.message
-      );
-
-      await ctx.reply(
-        "⚠️ I couldn't retrieve earnings information right now."
-      );
-
-      return;
-    }
-  }
-
-
-  /*
-  |--------------------------------------------------------------------------
-  | 9. SEC
-  |--------------------------------------------------------------------------
-  */
-
-  if (
-    isSecRequest(
-      cleanText
-    )
-  ) {
-    const company =
-      getCompanyFromMessage(
-        cleanText
-      );
-
-    if (!company) {
-      await ctx.reply(
-        "Which company's SEC filings would you like to see?"
-      );
-
-      return;
-    }
-
-    user.pendingIntent = "";
-
-    await user.save();
-
-    await ctx.reply(
-      `📄 SEC filing support for ${company.name} (${company.symbol}) is available when the company's SEC CIK is configured.`
+    await saveConversation(
+      telegramId,
+      text,
+      answer,
+      company
     );
 
     return;
@@ -927,40 +1030,173 @@ async function handleNaturalMessage(
 
   /*
   |--------------------------------------------------------------------------
-  | 10. COMPANY ONLY
+  | 7. EARNINGS
   |--------------------------------------------------------------------------
-  |
-  | If the user previously asked:
-  |
-  | "its live finance"
-  |
-  | this was handled above.
-  |
-  | Otherwise don't send a bare company name
-  | directly to Gemini.
-  |
   */
 
-  const company =
-    getCompanyFromMessage(
-      cleanText
+  if (
+    isEarningsRequest(text)
+  ) {
+    if (!company) {
+      const answer =
+        "Which company's earnings would you like to see?";
+
+      await ctx.reply(answer);
+
+      return;
+    }
+
+    const answer =
+      await handleEarnings(
+        ctx,
+        company
+      );
+
+    await saveConversation(
+      telegramId,
+      text,
+      answer,
+      company
     );
+
+    return;
+  }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | 8. SEC
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    isSecRequest(text)
+  ) {
+    if (!company) {
+      const answer =
+        "Which company's SEC filings would you like to see?";
+
+      await ctx.reply(answer);
+
+      return;
+    }
+
+    const answer =
+      await handleSEC(
+        ctx,
+        company
+      );
+
+    await saveConversation(
+      telegramId,
+      text,
+      answer,
+      company
+    );
+
+    return;
+  }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | 9. AI CONTEXT
+  |--------------------------------------------------------------------------
+  */
+
+  let context = "";
 
   if (company) {
-    const answer =
-      [
-        `📊 ${company.name} (${company.symbol})`,
+    try {
+      const [
+        quote,
+        profile
+      ] = await Promise.all([
+        getQuote(
+          company.finnhubSymbol ||
+          company.symbol
+        ),
+
+        getCompanyProfile(
+          company.finnhubSymbol ||
+          company.symbol
+        )
+      ]);
+
+      context =
+        JSON.stringify({
+          company,
+          quote,
+          profile
+        });
+    } catch (error) {
+      console.error(
+        "Finance context error:",
+        error.message
+      );
+    }
+  }
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | 10. GEMINI / NORMAL CONVERSATION
+  |--------------------------------------------------------------------------
+  */
+
+  const result =
+    await askAI({
+      telegramId,
+      user,
+      question: text,
+      context
+    });
+
+
+  /*
+  |--------------------------------------------------------------------------
+  | AI ERROR
+  |--------------------------------------------------------------------------
+  */
+
+  if (
+    !result.success
+  ) {
+    if (result.quota) {
+      const answer = [
+        "⚠️ The AI service has temporarily reached its usage limit.",
         "",
-        "What would you like to know?",
-        "",
-        `• ${company.name} live finance`,
-        `• Latest news about ${company.name}`,
-        `• ${company.name} earnings`,
-        `• Add ${company.name} to my watchlist`
+        "You can still use:",
+        "• Watchlist",
+        "• My watchlist live finance",
+        "• Live finance for a company",
+        "• Company news",
+        "• Earnings",
+        "• SEC filings"
       ].join("\n");
 
-    await ctx.reply(
-      answer
+      await ctx.reply(answer);
+
+      await saveConversation(
+        telegramId,
+        text,
+        answer,
+        company
+      );
+
+      return;
+    }
+
+    const answer =
+      "⚠️ I couldn't process that request right now. Please try again.";
+
+    await ctx.reply(answer);
+
+    await saveConversation(
+      telegramId,
+      text,
+      answer,
+      company
     );
 
     return;
@@ -969,22 +1205,19 @@ async function handleNaturalMessage(
 
   /*
   |--------------------------------------------------------------------------
-  | 11. UNKNOWN REQUEST
+  | AI SUCCESS
   |--------------------------------------------------------------------------
   */
 
   await ctx.reply(
-    [
-      "I can help with your finances.",
-      "",
-      "Try:",
-      "• Add Tesla to my watchlist",
-      "• What companies am I watching?",
-      "• My watchlist live finance",
-      "• What's Tesla's live price?",
-      "• Latest news about Tesla",
-      "• Tesla earnings"
-    ].join("\n")
+    result.text
+  );
+
+  await saveConversation(
+    telegramId,
+    text,
+    result.text,
+    company
   );
 }
 
@@ -992,6 +1225,7 @@ async function handleNaturalMessage(
 module.exports = {
   handleNaturalMessage,
   watchlistMessage,
-  sendWatchlistLiveFinance,
-  sendCompanyLiveFinance
+  handleWatchlistLiveFinance,
+  addToWatchlist,
+  removeFromWatchlist
 };
