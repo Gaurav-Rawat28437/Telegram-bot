@@ -88,9 +88,59 @@ function getCompanyFromMessage(text) {
 }
 
 
+
+
+
 /* =========================================================
    CASUAL MESSAGE
 ========================================================= */
+
+
+function handleBasicConversation(text) {
+  const value = String(text || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[!?.,]/g, "")
+    .replace(/\s+/g, " ");
+
+  if (
+    value === "hello" ||
+    value === "hi" ||
+    value === "hey" ||
+    value === "hii" ||
+    value === "hyy"
+  ) {
+    return [
+      "Hello! 👋 I'm Atlas AI, your financial assistant.",
+      "",
+      "Try:",
+      "• Track Tesla",
+      "• What's Tesla's price?",
+      "• Show my watchlist",
+      "• My watchlist live finance",
+      "• Latest news about Apple"
+    ].join("\n");
+  }
+
+  if (
+    value === "how are you" ||
+    value === "how are u" ||
+    value === "how r you" ||
+    value === "how r u"
+  ) {
+    return "I'm doing great! 😊 I'm ready to help with your finance and stock questions.";
+  }
+
+  if (
+    value === "thanks" ||
+    value === "thank you" ||
+    value === "thank u"
+  ) {
+    return "You're welcome! 😊";
+  }
+
+  return null;
+}
 
 function isCasualMessage(text) {
   const value = String(text || "")
