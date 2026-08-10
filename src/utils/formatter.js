@@ -1,72 +1,103 @@
-function money(value) {
-  if (
-    value === undefined ||
-    value === null ||
-    Number.isNaN(Number(value))
-  ) {
-    return "N/A";
-  }
-
-  return Number(value)
-    .toFixed(2);
-}
-
-function signed(value) {
+function formatNumber(
+  value,
+  decimals = 2
+) {
   const number =
     Number(value);
 
-  if (Number.isNaN(number)) {
+  if (!Number.isFinite(number)) {
     return "N/A";
   }
 
-  return (
-    number >= 0 ? "+" : ""
-  ) + number.toFixed(2);
-}
-
-function percent(value) {
-  const number =
-    Number(value);
-
-  if (Number.isNaN(number)) {
-    return "N/A";
-  }
-
-  return (
-    number >= 0 ? "+" : ""
-  ) + number.toFixed(2) + "%";
+  return number.toFixed(decimals);
 }
 
 function formatQuote(
   company,
   quote
 ) {
-  const direction =
-    Number(quote.d) >= 0
+  const price =
+    Number(quote?.c || 0);
+
+  const change =
+    Number(quote?.d || 0);
+
+  const changePercent =
+    Number(quote?.dp || 0);
+
+  const high =
+    Number(quote?.h || 0);
+
+  const low =
+    Number(quote?.l || 0);
+
+  const open =
+    Number(quote?.o || 0);
+
+  const previousClose =
+    Number(quote?.pc || 0);
+
+  const positive =
+    change >= 0;
+
+  const icon =
+    positive
       ? "🟢"
       : "🔴";
 
-  return `
-📊 ${company.name} (${company.symbol})
+  const sign =
+    positive
+      ? "+"
+      : "";
 
-🔴 Live Finance Update
+  return [
+    `📊 ${company.name} (${company.symbol})`,
+    "",
+    `💰 Current Price: $${formatNumber(price)}`,
+    `${icon} Change: ${sign}${formatNumber(change)}`,
+    `📊 Change %: ${sign}${formatNumber(changePercent)}%`,
+    "",
+    `📈 Day High: $${formatNumber(high)}`,
+    `📉 Day Low: $${formatNumber(low)}`,
+    `🔓 Open: $${formatNumber(open)}`,
+    `🔒 Previous Close: $${formatNumber(previousClose)}`
+  ].join("\n");
+}
 
-💰 Current Price: $${money(quote.c)}
-${direction} Change: ${signed(quote.d)}
-📊 Change %: ${percent(quote.dp)}
+function formatWatchlistQuote(
+  company,
+  quote
+) {
+  const price =
+    Number(quote?.c || 0);
 
-📈 Day High: $${money(quote.h)}
-📉 Day Low: $${money(quote.l)}
-🔓 Open: $${money(quote.o)}
-🔒 Previous Close: $${money(quote.pc)}
+  const change =
+    Number(quote?.d || 0);
 
-🕐 Market data fetched just now.
-`.trim();
+  const changePercent =
+    Number(quote?.dp || 0);
+
+  const positive =
+    change >= 0;
+
+  const icon =
+    positive
+      ? "🟢"
+      : "🔴";
+
+  const sign =
+    positive
+      ? "+"
+      : "";
+
+  return [
+    `📈 ${company.name} (${company.symbol})`,
+    `💰 Price: $${formatNumber(price)}`,
+    `${icon} ${sign}${formatNumber(change)} (${sign}${formatNumber(changePercent)}%)`
+  ].join("\n");
 }
 
 module.exports = {
-  money,
-  signed,
-  percent,
-  formatQuote
+  formatQuote,
+  formatWatchlistQuote
 };

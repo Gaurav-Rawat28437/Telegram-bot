@@ -1,142 +1,146 @@
-const companies = {
-  apple: {
+const COMPANIES = [
+  {
     name: "Apple",
-    symbol: "AAPL"
+    symbol: "AAPL",
+    aliases: [
+      "apple",
+      "aapl"
+    ]
   },
 
-  aapl: {
-    name: "Apple",
-    symbol: "AAPL"
-  },
-
-  microsoft: {
-    name: "Microsoft",
-    symbol: "MSFT"
-  },
-
-  msft: {
-    name: "Microsoft",
-    symbol: "MSFT"
-  },
-
-  tesla: {
+  {
     name: "Tesla",
-    symbol: "TSLA"
+    symbol: "TSLA",
+    aliases: [
+      "tesla",
+      "tsla"
+    ]
   },
 
-  tsla: {
-    name: "Tesla",
-    symbol: "TSLA"
+  {
+    name: "Microsoft",
+    symbol: "MSFT",
+    aliases: [
+      "microsoft",
+      "msft"
+    ]
   },
 
-  nvidia: {
+  {
     name: "NVIDIA",
-    symbol: "NVDA"
+    symbol: "NVDA",
+    aliases: [
+      "nvidia",
+      "nvda"
+    ]
   },
 
-  nvda: {
-    name: "NVIDIA",
-    symbol: "NVDA"
-  },
-
-  amazon: {
+  {
     name: "Amazon",
-    symbol: "AMZN"
+    symbol: "AMZN",
+    aliases: [
+      "amazon",
+      "amzn"
+    ]
   },
 
-  amzn: {
-    name: "Amazon",
-    symbol: "AMZN"
-  },
-
-  google: {
+  {
     name: "Alphabet",
-    symbol: "GOOGL"
+    symbol: "GOOGL",
+    aliases: [
+      "google",
+      "alphabet",
+      "googl"
+    ]
   },
 
-  alphabet: {
-    name: "Alphabet",
-    symbol: "GOOGL"
+  {
+    name: "Meta",
+    symbol: "META",
+    aliases: [
+      "meta",
+      "facebook",
+      "fb"
+    ]
   },
 
-  googl: {
-    name: "Alphabet",
-    symbol: "GOOGL"
-  },
-
-  meta: {
-    name: "Meta Platforms",
-    symbol: "META"
-  },
-
-  facebook: {
-    name: "Meta Platforms",
-    symbol: "META"
-  },
-
-  netflix: {
+  {
     name: "Netflix",
-    symbol: "NFLX"
-  },
-
-  nflx: {
-    name: "Netflix",
-    symbol: "NFLX"
+    symbol: "NFLX",
+    aliases: [
+      "netflix",
+      "nflx"
+    ]
   }
-};
+];
+
+
+function normalize(text) {
+  return String(text || "")
+    .toLowerCase()
+    .trim();
+}
+
 
 function resolveCompany(text) {
   if (!text) {
     return null;
   }
 
-  const value = String(text)
-    .trim()
-    .toLowerCase();
+  const value =
+    normalize(text);
 
   // Exact match
-  if (companies[value]) {
-    return companies[value];
+  for (const company of COMPANIES) {
+    if (
+      company.aliases.includes(value)
+    ) {
+      return {
+        name: company.name,
+        symbol: company.symbol
+      };
+    }
   }
 
-  /*
-   * Search inside a sentence.
-   *
-   * Example:
-   * "add tesla to my watchlist"
-   * "what is apple price"
-   * "tell me about microsoft"
-   */
-  for (const [keyword, company] of Object.entries(companies)) {
-    const regex = new RegExp(
-      `\\b${escapeRegex(keyword)}\\b`,
-      "i"
-    );
+  // Match inside sentence
+  for (const company of COMPANIES) {
+    for (const alias of company.aliases) {
+      const regex =
+        new RegExp(
+          `\\b${escapeRegExp(alias)}\\b`,
+          "i"
+        );
 
-    if (regex.test(value)) {
-      return company;
+      if (regex.test(value)) {
+        return {
+          name: company.name,
+          symbol: company.symbol
+        };
+      }
     }
   }
 
   return null;
 }
 
-function escapeRegex(value) {
+
+function escapeRegExp(value) {
   return value.replace(
     /[.*+?^${}()|[\]\\]/g,
     "\\$&"
   );
 }
 
+
 function getSupportedCompanies() {
-  const unique = new Map();
-
-  Object.values(companies).forEach((company) => {
-    unique.set(company.symbol, company);
-  });
-
-  return Array.from(unique.values());
+  return COMPANIES.map(
+    (company) => ({
+      name: company.name,
+      symbol: company.symbol
+    })
+  );
 }
+
 
 module.exports = {
   resolveCompany,

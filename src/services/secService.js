@@ -1,92 +1,92 @@
 const axios = require("axios");
 
-const BASE_URL =
-  "https://finnhub.io/api/v1";
+const SEC_BASE_URL =
+  "https://data.sec.gov/submissions";
 
-function getApiKey() {
-  if (!process.env.FINNHUB_API_KEY) {
+async function getCompanySubmissions(
+  cik
+) {
+  if (!cik) {
     throw new Error(
-      "FINNHUB_API_KEY is missing"
+      "SEC CIK is required"
     );
   }
 
-  return process.env.FINNHUB_API_KEY;
-}
+  const normalized =
+    String(cik)
+      .replace(/\D/g, "")
+      .padStart(10, "0");
 
-async function finnhubRequest(
-  endpoint,
-  params = {}
-) {
-  const response =
-    await axios.get(
-      `${BASE_URL}${endpoint}`,
-      {
-        params: {
-          ...params,
-          token: getApiKey()
-        },
-        timeout: 10000
-      }
+  const userAgent =
+    process.env.SEC_USER_AGENT ||
+    "AtlasAI financial assistant";
+
+  try {
+    const response =
+      await axios.get(
+        `${SEC_BASE_URL}/CIK${normalized}.json`,
+        {
+          headers: {
+            "User-Agent": userAgent,
+            Accept:
+              "application/json"
+          },
+          timeout: 10000
+        }
+      );
+
+    return response.data;
+  } catch (error) {
+    console.error(
+      "SEC API error:",
+      error.response?.status ||
+        error.message
     );
 
-  return response.data;
+    throw new Error(
+      "SEC request failed"
+    );
+  }
 }
 
-async function getQuote(symbol) {
-  return finnhubRequest(
-    "/quote",
-    {
-      symbol
-    }
-  );
-}
-
-async function getCompanyProfile(symbol) {
-  return finnhubRequest(
-    "/stock/profile2",
-    {
-      symbol
-    }
-  );
-}
-
-async function getCompanyNews(
-  symbol,
-  from,
-  to
+function getRecentFilings(
+  data,
+  limit = 5
 ) {
-  return finnhubRequest(
-    "/company-news",
-    {
-      symbol,
-      from,
-      to
-    }
-  );
-}
+  const recent =
+    data?.filings?.recent;
 
-async function getEarnings(symbol) {
-  return finnhubRequest(
-    "/calendar/earnings",
-    {
-      symbol
-    }
-  );
-}
+  if (!recent) {
+    return [];
+  }
 
-async function getRecommendation(symbol) {
-  return finnhubRequest(
-    "/stock/recommendation",
-    {
-      symbol
-    }
-  );
+  const filings = [];
+
+  for (
+    let i = 0;
+    i < recent.form.length &&
+    filings.length < limit;
+    i++
+  ) {
+    filings.push({
+      form:
+        recent.form[i],
+
+      filingDate:
+        recent.filingDate[i],
+
+      accessionNumber:
+        recent.accessionNumber[i],
+
+      primaryDocument:
+        recent.primaryDocument[i]
+    });
+  }
+
+  return filings;
 }
 
 module.exports = {
-  getQuote,
-  getCompanyProfile,
-  getCompanyNews,
-  getEarnings,
-  getRecommendation
+  getCompanySubmissions,
+  getRecentFilings
 };

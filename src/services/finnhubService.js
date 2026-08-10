@@ -1,139 +1,87 @@
-const https = require("https");
+const axios = require("axios");
 
-const API_KEY = process.env.FINNHUB_API_KEY;
+const BASE_URL =
+  "https://finnhub.io/api/v1";
 
-/**
- * Make a request to Finnhub.
- */
-function finnhubRequest(endpoint) {
-  return new Promise((resolve, reject) => {
-    if (!API_KEY) {
-      return reject(
-        new Error(
-          "FINNHUB_API_KEY is missing from your .env file."
-        )
-      );
-    }
 
-    const separator = endpoint.includes("?")
-      ? "&"
-      : "?";
+async function finnhubRequest(
+  endpoint,
+  params = {}
+) {
+  if (!process.env.FINNHUB_API_KEY) {
+    throw new Error(
+      "FINNHUB_API_KEY is missing in .env"
+    );
+  }
 
-    const url =
-      `https://finnhub.io/api/v1${endpoint}` +
-      `${separator}token=${encodeURIComponent(API_KEY)}`;
+  const response =
+    await axios.get(
+      `${BASE_URL}/${endpoint}`,
+      {
+        params: {
+          ...params,
+          token:
+            process.env.FINNHUB_API_KEY
+        },
 
-    https
-      .get(url, (response) => {
-        let data = "";
+        timeout: 15000
+      }
+    );
 
-        response.on("data", (chunk) => {
-          data += chunk;
-        });
-
-        response.on("end", () => {
-          if (
-            response.statusCode < 200 ||
-            response.statusCode >= 300
-          ) {
-            return reject(
-              new Error(
-                `Finnhub ${response.statusCode}: ${data}`
-              )
-            );
-          }
-
-          try {
-            const json = JSON.parse(data);
-
-            resolve(json);
-          } catch (error) {
-            reject(
-              new Error(
-                "Finnhub returned invalid JSON."
-              )
-            );
-          }
-        });
-      })
-      .on("error", (error) => {
-        reject(error);
-      });
-  });
+  return response.data;
 }
 
-/**
- * Get live stock quote.
- *
- * Returns:
- * {
- *   c: current price,
- *   d: change,
- *   dp: change percentage,
- *   h: high,
- *   l: low,
- *   o: open,
- *   pc: previous close
- * }
- */
+
 async function getQuote(symbol) {
-  if (!symbol) {
-    throw new Error("Stock symbol is required.");
-  }
-
-  return await finnhubRequest(
-    `/quote?symbol=${encodeURIComponent(symbol)}`
+  return finnhubRequest(
+    "quote",
+    {
+      symbol
+    }
   );
 }
 
-/**
- * Get company profile.
- */
+
 async function getCompanyProfile(symbol) {
-  if (!symbol) {
-    throw new Error("Stock symbol is required.");
-  }
-
-  return await finnhubRequest(
-    `/stock/profile2?symbol=${encodeURIComponent(symbol)}`
+  return finnhubRequest(
+    "stock/profile2",
+    {
+      symbol
+    }
   );
 }
 
-/**
- * Search Finnhub companies.
- *
- * IMPORTANT:
- * Only send a short search term.
- *
- * Do NOT send:
- * "Add Tesla to my watchlist"
- *
- * Send:
- * "Tesla"
- */
-async function searchCompany(query) {
-  if (!query) {
-    return [];
-  }
 
-  const cleanQuery = String(query)
-    .trim()
-    .slice(0, 50);
-
-  if (!cleanQuery) {
-    return [];
-  }
-
-  const result = await finnhubRequest(
-    `/search?q=${encodeURIComponent(cleanQuery)}`
+async function getCompanyNews(
+  symbol,
+  from,
+  to
+) {
+  return finnhubRequest(
+    "company-news",
+    {
+      symbol,
+      from,
+      to
+    }
   );
-
-  return result.result || [];
 }
+
+
+async function getEarnings(symbol) {
+  return finnhubRequest(
+    "calendar/earnings",
+    {
+      symbol
+    }
+  );
+}
+
 
 module.exports = {
   finnhubRequest,
   getQuote,
   getCompanyProfile,
-  searchCompany
+  getCompanyNews,
+  getEarnings
 };

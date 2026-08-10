@@ -2,7 +2,7 @@ const {
   getCompanyNews
 } = require("./finnhubService");
 
-function dateString(date) {
+function formatDate(date) {
   return date
     .toISOString()
     .split("T")[0];
@@ -11,20 +11,20 @@ function dateString(date) {
 async function getLatestNews(
   symbol
 ) {
-  const today =
+  const to =
     new Date();
 
-  const previous =
+  const from =
     new Date();
 
-  previous.setDate(
-    previous.getDate() - 7
+  from.setDate(
+    from.getDate() - 7
   );
 
   return getCompanyNews(
     symbol,
-    dateString(previous),
-    dateString(today)
+    formatDate(from),
+    formatDate(to)
   );
 }
 

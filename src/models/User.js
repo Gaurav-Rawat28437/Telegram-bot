@@ -25,7 +25,8 @@ const userSchema = new mongoose.Schema(
     telegramId: {
       type: String,
       required: true,
-      unique: true
+      unique: true,
+      index: true
     },
 
     username: {
@@ -40,16 +41,7 @@ const userSchema = new mongoose.Schema(
 
     role: {
       type: String,
-      enum: [
-        "student",
-        "investor",
-        "trader",
-        "analyst",
-        "founder",
-        "finance professional",
-        "other"
-      ],
-      default: null
+      default: ""
     },
 
     watchlist: {
@@ -57,26 +49,13 @@ const userSchema = new mongoose.Schema(
       default: []
     },
 
-    preferences: {
-      briefingEnabled: {
-        type: Boolean,
-        default: true
-      },
-
-      briefingHour: {
-        type: Number,
-        default: 8
-      },
-
-      briefingMinute: {
-        type: Number,
-        default: 0
-      },
-
-      timezone: {
-        type: String,
-        default: "Asia/Kolkata"
-      }
+    // Remembers what the user wants
+    // for short follow-up messages such as:
+    // "tesla"
+    // after "its live finance"
+    pendingIntent: {
+      type: String,
+      default: ""
     }
   },
   {

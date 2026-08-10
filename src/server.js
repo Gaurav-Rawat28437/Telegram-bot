@@ -1,36 +1,84 @@
 require("dotenv").config();
 
-const express = require("express");
-const cors = require("cors");
-const connectDB = require("../src/config/db");
+const dns =
+  require("dns");
 
-const app = express();
+dns.setServers([
+  "8.8.8.8",
+  "8.8.4.4"
+]);
 
-app.use(cors());
-app.use(express.json());
+const express =
+  require("express");
 
-const PORT = process.env.PORT || 8080;
+const connectDB =
+  require("./config/db");
 
-app.get("/", (req, res) => {
-  res.json({
-    success: true,
-    message: "Atlas AI Backend Running..."
-  });
-});
+const app =
+  express();
 
-connectDB()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(
-        `Server running on port ${PORT}`
-      );
+const PORT =
+  process.env.PORT || 5000;
+
+app.use(
+  express.json()
+);
+
+app.get(
+  "/",
+  (req, res) => {
+    res.status(200).json({
+      success: true,
+      message:
+        "UV-Atlas backend is running"
     });
-  })
-  .catch((error) => {
+  }
+);
+
+app.get(
+  "/health",
+  (req, res) => {
+    res.status(200).json({
+      success: true,
+      service:
+        "UV-Atlas Backend",
+      status: "healthy"
+    });
+  }
+);
+
+async function startServer() {
+  try {
+    await connectDB();
+
+    app.listen(
+      PORT,
+      () => {
+        console.log(
+          "================================"
+        );
+
+        console.log(
+          `Server running on port ${PORT}`
+        );
+
+        console.log(
+          `http://localhost:${PORT}`
+        );
+
+        console.log(
+          "================================"
+        );
+      }
+    );
+  } catch (error) {
     console.error(
-      "Server startup failed:",
+      "SERVER START ERROR:",
       error.message
     );
 
     process.exit(1);
-  });
+  }
+}
+
+startServer();

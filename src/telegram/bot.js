@@ -1,16 +1,11 @@
 require("dotenv").config();
 
-const dns =
-  require("dns");
-
-dns.setServers([
-  "8.8.8.8",
-  "8.8.4.4"
-]);
-
 const {
   Telegraf
 } = require("telegraf");
+
+const cron =
+  require("node-cron");
 
 const connectDB =
   require("../config/db");
@@ -23,28 +18,19 @@ const {
 } = require("./handlers");
 
 const {
-  startScheduler
-} = require("./scheduler");
+  getQuote
+} = require("../services/finnhubService");
+
 
 const bot =
   new Telegraf(
-    process.env.BOT_TOKEN
+    process.env.TELEGRAM_BOT_TOKEN
   );
 
-const processingUsers =
-  new Set();
 
-async function createOrUpdateUser(
-  ctx
-) {
+async function getOrCreateUser(ctx) {
   const telegramId =
     String(ctx.from.id);
-
-  const username =
-    ctx.from.username || "";
-
-  const firstName =
-    ctx.from.first_name || "there";
 
   let user =
     await User.findOne({
@@ -55,27 +41,22 @@ async function createOrUpdateUser(
     user =
       await User.create({
         telegramId,
-        username,
-        firstName,
-        watchlist: []
+
+        username:
+          ctx.from.username || "",
+
+        firstName:
+          ctx.from.first_name || "",
+
+        role: "",
+
+        watchlist: [],
+
+        pendingIntent: ""
       });
 
     console.log(
-      "NEW USER CREATED:",
-      telegramId
-    );
-
-  } else {
-    user.username =
-      username;
-
-    user.firstName =
-      firstName;
-
-    await user.save();
-
-    console.log(
-      "EXISTING USER UPDATED:",
+      "New user created:",
       telegramId
     );
   }
@@ -83,206 +64,187 @@ async function createOrUpdateUser(
   return user;
 }
 
+
+/*
+|--------------------------------------------------------------------------
+| START
+|--------------------------------------------------------------------------
+*/
+
 bot.start(
   async (ctx) => {
     try {
       const user =
-        await createOrUpdateUser(
+        await getOrCreateUser(
           ctx
         );
 
       if (!user.role) {
         await ctx.reply(
-          `👋 Hello ${user.firstName}!
-
-Welcome to UV-Atlas 🤖📈
-
-I'm your personal AI financial assistant.
-
-First, tell me what best describes you:
-
-• Investor
-• Analyst
-• Trader
-• Student
-• Finance Professional
-• Founder
-• Other`
+          [
+            "👋 Hello!",
+            "",
+            "I'm your AI financial assistant.",
+            "",
+            "Before we start, tell me your role:",
+            "",
+            "• Investor",
+            "• Analyst",
+            "• Trader",
+            "• Student",
+            "• Finance Professional",
+            "• Founder",
+            "• Other"
+          ].join("\n")
         );
 
         return;
       }
 
       await ctx.reply(
-        `👋 Welcome back, ${user.firstName}!
-
-Your profile is ready.
-
-Role: ${user.role}
-
-You can talk to me naturally.
-
-For example:
-
-• Tell me about Apple
-• What's Apple's price now?
-• Add Tesla to my watchlist
-• What companies am I watching?
-• Remove Microsoft
-• What's the latest news about Nvidia?
-• Show Tesla's latest SEC filing
-• What are Apple's latest earnings?
-
-I'll remember our conversations and the companies you follow.`
+        [
+          "👋 Welcome back!",
+          "",
+          `Role: ${user.role}`,
+          "",
+          "You can now talk to me naturally.",
+          "",
+          "Try:",
+          "• Add Tesla to my watchlist",
+          "• What's Apple's price now?",
+          "• What companies am I watching?",
+          "• My watchlist live finance",
+          "• Latest news about Tesla"
+        ].join("\n")
       );
-
     } catch (error) {
       console.error(
         "START ERROR:",
-        error.message
+        error
       );
 
       await ctx.reply(
-        "⚠️ I couldn't start UV-Atlas right now. Please try /start again."
+        "⚠️ Something went wrong. Please try /start again."
       );
     }
   }
 );
 
-const roles = [
-  "student",
-  "investor",
-  "trader",
-  "analyst",
-  "finance professional",
-  "founder",
-  "other"
-];
 
-for (
-  const role of roles
-) {
-  bot.hears(
-    new RegExp(
-      `^${role}$`,
-      "i"
-    ),
-    async (ctx) => {
-      try {
-        const telegramId =
-          String(ctx.from.id);
+/*
+|--------------------------------------------------------------------------
+| TEXT
+|--------------------------------------------------------------------------
+*/
 
-        const user =
-          await User.findOne({
-            telegramId
-          });
+bot.on(
+  "text",
+  async (ctx) => {
+    try {
+      const text =
+        String(
+          ctx.message.text || ""
+        ).trim();
 
-        if (!user) {
+      if (!text) {
+        return;
+      }
+
+      if (
+        text === "/start"
+      ) {
+        return;
+      }
+
+      const user =
+        await getOrCreateUser(
+          ctx
+        );
+
+
+      /*
+      |--------------------------------------------------------------------------
+      | ROLE SETUP
+      |--------------------------------------------------------------------------
+      */
+
+      if (!user.role) {
+        const role =
+          text
+            .toLowerCase()
+            .trim();
+
+        const allowedRoles = [
+          "investor",
+          "analyst",
+          "trader",
+          "student",
+          "finance professional",
+          "founder",
+          "other"
+        ];
+
+        const matchedRole =
+          allowedRoles.find(
+            (item) =>
+              role === item
+          );
+
+        if (!matchedRole) {
           await ctx.reply(
-            "Please send /start first."
+            [
+              "Please choose one of these roles:",
+              "",
+              "Investor",
+              "Analyst",
+              "Trader",
+              "Student",
+              "Finance Professional",
+              "Founder",
+              "Other"
+            ].join("\n")
           );
 
           return;
         }
 
         user.role =
-          role;
+          matchedRole;
 
         await user.save();
 
         await ctx.reply(
-          `✅ Profile setup complete.
-
-Role: ${role}
-
-You can now talk to me naturally.
-
-Try:
-
-"Add Tesla to my watchlist"
-
-"What's Apple's price now?"
-
-"What companies am I watching?"
-
-"What's the latest news about Tesla?"
-
-I'll remember the companies you discuss.`
-        );
-
-      } catch (error) {
-        console.error(
-          "ROLE ERROR:",
-          error.message
-        );
-
-        await ctx.reply(
-          "⚠️ I couldn't save your role. Please try again."
-        );
-      }
-    }
-  );
-}
-
-bot.on(
-  "text",
-  async (ctx) => {
-    const telegramId =
-      String(ctx.from.id);
-
-    const text =
-      ctx.message.text.trim();
-
-    if (
-      text === "/start"
-    ) {
-      return;
-    }
-
-    if (
-      processingUsers.has(
-        telegramId
-      )
-    ) {
-      await ctx.reply(
-        "⏳ I'm still processing your previous request. Please wait a moment."
-      );
-
-      return;
-    }
-
-    processingUsers.add(
-      telegramId
-    );
-
-    try {
-      const user =
-        await User.findOne({
-          telegramId
-        });
-
-      if (!user) {
-        await ctx.reply(
-          "⚠️ I couldn't find your profile. Please send /start."
+          [
+            "✅ Profile setup complete.",
+            "",
+            `Role: ${matchedRole}`,
+            "",
+            "You can now talk to me naturally.",
+            "",
+            "Try:",
+            "• Add Tesla to my watchlist",
+            "• What's Apple's price now?",
+            "• What companies am I watching?",
+            "• My watchlist live finance",
+            "• Latest news about Tesla"
+          ].join("\n")
         );
 
         return;
       }
 
-      if (!user.role) {
-        await ctx.reply(
-          "Please complete your profile first by sending /start."
-        );
 
-        return;
-      }
+      /*
+      |--------------------------------------------------------------------------
+      | HANDLE MESSAGE
+      |--------------------------------------------------------------------------
+      */
 
       await handleNaturalMessage(
         ctx,
         user,
         text
       );
-
     } catch (error) {
       console.error(
         "MESSAGE ERROR:",
@@ -292,48 +254,126 @@ bot.on(
       await ctx.reply(
         "⚠️ Something went wrong while processing your request. Please try again."
       );
-
-    } finally {
-      processingUsers.delete(
-        telegramId
-      );
     }
   }
 );
 
-bot.catch(
-  async (error, ctx) => {
-    console.error(
-      "GLOBAL TELEGRAM ERROR:",
-      error
+
+/*
+|--------------------------------------------------------------------------
+| DAILY WATCHLIST BRIEFING
+|--------------------------------------------------------------------------
+*/
+
+cron.schedule(
+  "0 20 * * *",
+  async () => {
+    console.log(
+      "Running daily 8 PM briefing..."
     );
 
     try {
-      await ctx.reply(
-        "⚠️ Something went wrong. Please try again."
+      const users =
+        await User.find({
+          "watchlist.0": {
+            $exists: true
+          }
+        });
+
+      for (
+        const user of users
+      ) {
+        const lines = [
+          "🌙 Daily Finance Update",
+          "",
+          "Your watchlist:"
+        ];
+
+        for (
+          const item of user.watchlist
+        ) {
+          try {
+            const quote =
+              await getQuote(
+                item.symbol
+              );
+
+            const price =
+              Number(
+                quote?.c || 0
+              );
+
+            const change =
+              Number(
+                quote?.d || 0
+              );
+
+            const percent =
+              Number(
+                quote?.dp || 0
+              );
+
+            const icon =
+              change >= 0
+                ? "🟢"
+                : "🔴";
+
+            const sign =
+              change >= 0
+                ? "+"
+                : "";
+
+            lines.push(
+              "",
+              `📈 ${item.name} (${item.symbol})`,
+              `💰 $${price.toFixed(2)}`,
+              `${icon} ${sign}${change.toFixed(2)} (${sign}${percent.toFixed(2)}%)`
+            );
+          } catch (error) {
+            console.error(
+              `Briefing error ${item.symbol}:`,
+              error.message
+            );
+          }
+        }
+
+        await bot.telegram.sendMessage(
+          user.telegramId,
+          lines.join("\n")
+        );
+      }
+    } catch (error) {
+      console.error(
+        "BRIEFING ERROR:",
+        error.message
       );
-    } catch {}
+    }
+  },
+  {
+    timezone:
+      process.env.TIMEZONE ||
+      "Asia/Kolkata"
   }
 );
 
-async function start() {
+
+async function startBot() {
   try {
     await connectDB();
 
     console.log(
-      "MongoDB Connected for Telegram Bot"
+      "MongoDB connected for Telegram bot."
     );
 
-    startScheduler(
-      bot
+    console.log(
+      "Daily briefing scheduled at 08:00 Asia/Kolkata"
     );
 
     await bot.launch();
 
     console.log(
-      "🚀 UV-Atlas Telegram Bot is running..."
+      "🚀 Telegram bot is running."
     );
-
   } catch (error) {
     console.error(
       "BOT STARTUP ERROR:",
@@ -344,30 +384,16 @@ async function start() {
   }
 }
 
-start();
+
+startBot();
+
 
 process.once(
   "SIGINT",
-  () => {
-    console.log(
-      "Stopping bot..."
-    );
-
-    bot.stop(
-      "SIGINT"
-    );
-  }
+  () => bot.stop("SIGINT")
 );
 
 process.once(
   "SIGTERM",
-  () => {
-    console.log(
-      "Stopping bot..."
-    );
-
-    bot.stop(
-      "SIGTERM"
-    );
-  }
+  () => bot.stop("SIGTERM")
 );

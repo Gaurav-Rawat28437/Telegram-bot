@@ -1,26 +1,44 @@
+const dns = require("dns");
+
+dns.setServers([
+  "8.8.8.8",
+  "8.8.4.4"
+]);
+
 const mongoose = require("mongoose");
 
 async function connectDB() {
   try {
-    await mongoose.connect(process.env.MONGO_URL);
+    const mongoURI = process.env.MONGODB_URI;
 
+    if (!mongoURI) {
+      throw new Error(
+        "MONGODB_URI is missing in .env"
+      );
+    }
+
+    const connection =
+      await mongoose.connect(mongoURI, {
+        serverSelectionTimeoutMS: 10000,
+        connectTimeoutMS: 10000
+      });
+
+    console.log("================================");
     console.log("MongoDB Connected");
-    console.log("Database:", mongoose.connection.name);
-    console.log("Host:", mongoose.connection.host);
-
-    const collections =
-      await mongoose.connection.db
-        .listCollections()
-        .toArray();
-
     console.log(
-      "Collections:",
-      collections.map((item) => item.name)
+      "Database:",
+      connection.connection.name
     );
+    console.log(
+      "Host:",
+      connection.connection.host
+    );
+    console.log("================================");
 
+    return connection;
   } catch (error) {
     console.error(
-      "MongoDB connection failed:",
+      "MongoDB connection error:",
       error.message
     );
 
